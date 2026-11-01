@@ -85,7 +85,7 @@ class PpOcr(context: Context, tier: String) {
                 xs.max().toInt(),
                 ys.max().toInt(),
             )
-            lines.add(OcrLine(text, bounds, score))
+            lines.add(OcrLine(text, bounds, score, box.corners))
         }
         return lines
     }

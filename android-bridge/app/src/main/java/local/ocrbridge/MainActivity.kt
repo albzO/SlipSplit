@@ -2,6 +2,7 @@ package local.ocrbridge
 
 import android.app.Activity
 import android.content.Intent
+import android.content.IntentSender
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -16,6 +17,9 @@ import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import java.io.File
 import java.util.concurrent.Executors
 import kotlin.math.max
@@ -23,6 +27,7 @@ import kotlin.math.roundToLong
 
 private const val REQUEST_CAMERA = 1
 private const val REQUEST_GALLERY = 2
+private const val REQUEST_SCAN = 3
 private const val STATE_PHOTO = "photo"
 private const val MAX_SIDE = 2400
 private const val WHOLE_AMOUNT_FROM = 1000.0
@@ -70,7 +75,7 @@ class MainActivity : Activity() {
         dropped = findViewById(R.id.dropped)
         raw = findViewById(R.id.raw)
         photoUri = savedInstanceState?.getString(STATE_PHOTO)?.let(Uri::parse)
-        camera.setOnClickListener { takePhoto() }
+        camera.setOnClickListener { scanReceipt() }
         gallery.setOnClickListener { pickPhoto() }
         findViewById<View>(R.id.rawToggle).setOnClickListener {
             raw.visibility = if (raw.visibility == View.VISIBLE) View.GONE else View.VISIBLE
@@ -85,6 +90,28 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         worker.shutdown()
         super.onDestroy()
+    }
+
+    /** Finds and flattens the receipt with Google's scanner; the plain camera is the fallback. */
+    private fun scanReceipt() {
+        val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(false)
+            .setPageLimit(1)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
+            .build()
+        GmsDocumentScanning.getClient(options).getStartScanIntent(this)
+            .addOnSuccessListener { sender ->
+                try {
+                    startIntentSenderForResult(sender, REQUEST_SCAN, null, 0, 0, 0)
+                } catch (_: IntentSender.SendIntentException) {
+                    takePhoto()
+                }
+            }
+            .addOnFailureListener {
+                status.text = getString(R.string.status_no_scanner)
+                takePhoto()
+            }
     }
 
     private fun takePhoto() {
@@ -107,7 +134,12 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
-        val uri = if (requestCode == REQUEST_CAMERA) photoUri else data?.data
+        val uri = when (requestCode) {
+            REQUEST_CAMERA -> photoUri
+            REQUEST_SCAN -> GmsDocumentScanningResult.fromActivityResultIntent(data)
+                ?.pages?.firstOrNull()?.imageUri
+            else -> data?.data
+        }
         uri?.let(::recognize)
     }
 

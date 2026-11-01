@@ -1,17 +1,27 @@
 package local.ocrbridge
 
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.sqrt
 
 /** Port of app/receipt.py; ReceiptParserTest keeps the two in step on the sample receipts. */
-class OcrLine(val text: String, val box: IntArray, val score: Float = 0f)
+class OcrLine(
+    val text: String,
+    val box: IntArray,
+    val score: Float = 0f,
+    val corners: FloatArray? = null,
+) {
+    /** The box in levelled coordinates, which is what the parser reads. */
+    var aligned: IntArray = box
+}
 
 data class ReceiptItem(
     val name: String,
     val qty: Int,
     val price: Double,
     val sku: String = "",
-    val spec: String = "",
+    var spec: String = "",
 ) {
     /** The OCR lines this item was read from. */
     var lines: List<OcrLine> = emptyList()
@@ -50,6 +60,11 @@ private const val MAX_DROPPED_ROWS = 3
 private const val MAX_ITEMS_TO_SEARCH = 30
 private const val MIN_ROWS_ABOVE_SUBTOTAL = 2
 private const val COMPANY_HEIGHT_RATIO = 0.75
+private const val LONG_LINE_RATIO = 3.0
+private const val FIT_ROUNDS = 3
+private const val FIT_OUTLIER_RATIO = 3.0
+private const val FIT_MIN_GAIN = 0.7
+private const val MIN_LONG_LINES = 3
 private const val AMOUNT =
     "-?[0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{1,2})?|-?[0-9]+(?:[.,][0-9]{1,2})?"
 
@@ -156,19 +171,118 @@ private fun median(values: List<Int>): Double {
     else (sorted[middle - 1] + sorted[middle]) / 2.0
 }
 
+private fun medianOf(values: List<Double>): Double {
+    val sorted = values.sorted()
+    val middle = sorted.size / 2
+    return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2
+}
+
+private class RowLine(val intercept: Double, val slope: Double)
+
+/** Fits slope = tilt + spread * intercept; printed rows meet at one vanishing point in a photo. */
+private fun fitRowLines(found: List<RowLine>): Pair<Double, Double> {
+    val flatTilt = medianOf(found.map { it.slope })
+    var spread = 0.0
+    var tilt = flatTilt
+    var kept = found
+    for (round in 0 until FIT_ROUNDS) {
+        val meanC = kept.sumOf { it.intercept } / kept.size
+        val meanS = kept.sumOf { it.slope } / kept.size
+        val variance = kept.sumOf { (it.intercept - meanC) * (it.intercept - meanC) }
+        if (variance == 0.0) break
+        spread = kept.sumOf { (it.intercept - meanC) * (it.slope - meanS) } / variance
+        tilt = meanS - spread * meanC
+        val misses = found.map { abs(it.slope - tilt - spread * it.intercept) }
+        val limit = FIT_OUTLIER_RATIO * medianOf(misses)
+        kept = found.filterIndexed { index, _ -> misses[index] <= limit }.ifEmpty { found }
+    }
+    // Paper held at odd angles fits nothing; keep perspective only when it clearly explains more.
+    val fitted = medianOf(found.map { abs(it.slope - tilt - spread * it.intercept) })
+    val flat = medianOf(found.map { abs(it.slope - flatTilt) })
+    return if (fitted > FIT_MIN_GAIN * flat) 0.0 to flatTilt else spread to tilt
+}
+
+/**
+ * Puts every box in row coordinates, so photos need not be straight or square-on. Straight
+ * printed rows stay straight in a photo and share a vanishing point, so one fit covers tilt
+ * and perspective however far an amount sits from its text.
+ */
+private fun deskew(lines: List<OcrLine>) {
+    val polygons = lines.mapNotNull { line -> line.corners?.map { it.toDouble() } }
+    if (polygons.isEmpty()) return
+    val centerX = polygons.sumOf { p -> p[0] + p[2] + p[4] + p[6] } / (4 * polygons.size)
+    val centerY = polygons.sumOf { p -> p[1] + p[3] + p[5] + p[7] } / (4 * polygons.size)
+    val found = polygons.mapNotNull { p ->
+        val run = (p[2] - p[0]) + (p[4] - p[6])
+        val width = hypot(p[2] - p[0], p[3] - p[1])
+        val height = hypot(p[6] - p[0], p[7] - p[1])
+        if (run > 0 && width >= LONG_LINE_RATIO * height) {
+            val slope = ((p[3] - p[1]) + (p[5] - p[7])) / run
+            val middleX = (p[0] + p[2] + p[4] + p[6]) / 4 - centerX
+            val middleY = (p[1] + p[3] + p[5] + p[7]) / 4 - centerY
+            RowLine(middleY - slope * middleX, slope)
+        } else {
+            null
+        }
+    }
+    if (found.size < MIN_LONG_LINES) return
+    val (spread, tilt) = fitRowLines(found)
+    for (line in lines) {
+        val p = line.corners?.map { it.toDouble() } ?: continue
+        val xs = ArrayList<Double>()
+        val ys = ArrayList<Double>()
+        for (corner in 0 until 4) {
+            val dx = p[corner * 2] - centerX
+            val dy = p[corner * 2 + 1] - centerY
+            val row = (dy - tilt * dx) / (1 + spread * dx)
+            val slope = tilt + spread * row
+            xs.add((dx + dy * slope) / sqrt(1 + slope * slope))
+            ys.add(row)
+        }
+        line.aligned = intArrayOf(xs.min().toInt(), ys.min().toInt(), xs.max().toInt(), ys.max().toInt())
+    }
+}
+
 /** One printed line of the receipt and the right edge of its last box. */
 class ReceiptRow(val text: String, val right: Int, val cells: List<OcrLine>) {
-    val left: Int get() = cells.first().box[0]
+    val left: Int get() = cells.first().aligned[0]
+}
+
+private class Row(val center: Double, val cells: MutableList<OcrLine>)
+
+/** Moves each short box to the nearest row; scanning alone takes the first row in reach. */
+private fun settleRows(rows: List<Row>) {
+    fun width(cell: OcrLine) = cell.aligned[2] - cell.aligned[0]
+    fun middle(cell: OcrLine) = (cell.aligned[1] + cell.aligned[3]) / 2.0
+    fun isLong(cell: OcrLine) =
+        width(cell) >= LONG_LINE_RATIO * (cell.aligned[3] - cell.aligned[1])
+
+    val anchors = rows.map { row -> row.cells.maxBy(::width) }
+    val centers = anchors.map(::middle)
+    class Move(val cell: OcrLine, val source: Int, val target: Int)
+    val moves = ArrayList<Move>()
+    rows.forEachIndexed { index, row ->
+        for (cell in row.cells) {
+            if (cell === anchors[index]) continue
+            // Only real text rows may take a box over; marks and handwriting are too short.
+            val choices = anchors.indices.filter { isLong(anchors[it]) } + index
+            val nearest = choices.minBy { abs(centers[it] - middle(cell)) }
+            if (nearest != index) moves.add(Move(cell, index, nearest))
+        }
+    }
+    for (move in moves) {
+        rows[move.source].cells.removeAll { it === move.cell }
+        rows[move.target].cells.add(move.cell)
+    }
 }
 
 /** Joins boxes printed on the same line, left to right. */
 fun groupRows(lines: List<OcrLine>): List<ReceiptRow> {
     if (lines.isEmpty()) return emptyList()
-    val tolerance = 0.6 * median(lines.map { it.box[3] - it.box[1] })
-    class Row(val center: Double, val cells: MutableList<OcrLine>)
+    val tolerance = 0.6 * median(lines.map { it.aligned[3] - it.aligned[1] })
     val rows = ArrayList<Row>()
-    for (line in lines.sortedBy { it.box[1] + it.box[3] }) {
-        val center = (line.box[1] + line.box[3]) / 2.0
+    for (line in lines.sortedBy { it.aligned[1] + it.aligned[3] }) {
+        val center = (line.aligned[1] + line.aligned[3]) / 2.0
         val last = rows.lastOrNull()
         if (last != null && abs(center - last.center) <= tolerance) {
             last.cells.add(line)
@@ -176,9 +290,10 @@ fun groupRows(lines: List<OcrLine>): List<ReceiptRow> {
             rows.add(Row(center, arrayListOf(line)))
         }
     }
+    settleRows(rows)
     return rows.map { row ->
-        val cells = row.cells.sortedBy { it.box[0] }
-        ReceiptRow(cells.joinToString(" ") { it.text }, cells.maxOf { it.box[2] }, cells)
+        val cells = row.cells.sortedBy { it.aligned[0] }
+        ReceiptRow(cells.joinToString(" ") { it.text }, cells.maxOf { it.aligned[2] }, cells)
     }
 }
 
@@ -193,7 +308,7 @@ private fun trailingAmount(row: String): Pair<Double?, String> {
 /** Left limit of the right-aligned amount column, or null when there is no such column. */
 private fun priceColumn(rows: List<ReceiptRow>, lines: List<OcrLine>): Double? {
     if (lines.isEmpty()) return null
-    val tolerance = COLUMN_TOLERANCE * (lines.maxOf { it.box[2] } - lines.minOf { it.box[0] })
+    val tolerance = COLUMN_TOLERANCE * (lines.maxOf { it.aligned[2] } - lines.minOf { it.aligned[0] })
     val edges = rows
         .filter {
             trailingAmount(it.text).first != null &&
@@ -226,6 +341,7 @@ private class Pending(
     val sku: String,
     var spec: String,
     val left: Int,
+    val priced: Boolean,
     cells: List<OcrLine>,
 ) {
     val lines = ArrayList(cells)
@@ -252,7 +368,7 @@ private fun findDate(text: String): Pair<String, String> {
 
 private fun findTime(text: String) = TIME.find(text)?.value.orEmpty()
 
-private fun lineHeight(line: OcrLine) = line.box[3] - line.box[1]
+private fun lineHeight(line: OcrLine) = line.aligned[3] - line.aligned[1]
 
 /** Takes a legal name from the header, else the tallest text there, usually the logo. */
 private fun readCompany(rows: List<ReceiptRow>, result: Receipt) {
@@ -316,10 +432,12 @@ private fun splitSku(text: String): Pair<String, String> {
 fun parseReceipt(lines: List<OcrLine>): Receipt {
     val result = Receipt()
     var pending: Pending? = null
+    var lastLeft: Int? = null
     var pendingField: Field? = null
+    deskew(lines)
     val rows = groupRows(lines)
     val column = priceColumn(rows, lines)
-    val indent = if (lines.isEmpty()) 0.0 else median(lines.map { it.box[3] - it.box[1] })
+    val indent = if (lines.isEmpty()) 0.0 else median(lines.map { it.aligned[3] - it.aligned[1] })
 
     /** A row belongs to the item above when indented under it or unlike a name. */
     fun continues(text: String, left: Int): Boolean {
@@ -372,23 +490,34 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
             continue
         }
         // Only the amount column prices an item; a unit price beside the name is description.
-        if (AT_PRICE.containsMatchIn(row)) {
+        var priced = AT_PRICE.containsMatchIn(row)
+        if (priced) {
             row = row.replace(AT_PRICE, "")
             amount = null
         } else if (amount != null && column != null && entry.right < column) {
             row = label
             amount = null
+            priced = true
         }
         if (amount == null) {
             val text = row.replace(ITEM_MARKER, "").trim()
             if (!HAS_NAME.containsMatchIn(text)) continue
             val held = pending
-            if (held != null && continues(text, entry.left)) {
+            val (sku, name) = splitSku(text)
+            val last = result.items.lastOrNull()
+            val leftOfLast = lastLeft
+            // A row with its own price is an item, never a heading: what follows it describes it.
+            if (held != null && (continues(text, entry.left) || held.priced)) {
                 held.spec = joinSpec(held.spec, text)
                 held.lines.addAll(entry.cells)
+            } else if (held == null && sku.isEmpty() && last != null && leftOfLast != null &&
+                entry.left > leftOfLast + indent
+            ) {
+                // Amounts can print level with an item's first row, leaving its detail below.
+                last.spec = joinSpec(last.spec, text)
+                last.lines = last.lines + entry.cells
             } else {
-                val (sku, name) = splitSku(text)
-                pending = Pending(name, sku, "", entry.left, entry.cells)
+                pending = Pending(name, sku, "", entry.left, priced, entry.cells)
             }
             continue
         }
@@ -409,6 +538,7 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
                 held.spec
             }
             addItem(ReceiptItem(held.name, qty, amount, held.sku, spec), held.lines + entry.cells)
+            lastLeft = held.left
             pending = null
             continue
         }
@@ -427,6 +557,7 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
             name = TRAILING_QTY.replaceFirst(name, "").trim()
         }
         addItem(ReceiptItem(name, qty, amount, sku), entry.cells)
+        lastLeft = entry.left
     }
     if (result.total == null) result.total = result.subtotal
     reconcile(result)

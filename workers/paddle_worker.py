@@ -25,8 +25,15 @@ def load(engine):
 def to_lines(page):
     boxes = page["rec_boxes"]
     return [
-        {"text": text, "score": round(float(score), 4), "box": [int(v) for v in box]}
-        for text, score, box in zip(page["rec_texts"], page["rec_scores"], boxes.tolist())
+        {
+            "text": text,
+            "score": round(float(score), 4),
+            "box": [int(v) for v in box],
+            "poly": [[int(x), int(y)] for x, y in poly],
+        }
+        for text, score, box, poly in zip(
+            page["rec_texts"], page["rec_scores"], boxes.tolist(), page["rec_polys"],
+        )
     ]
 
 

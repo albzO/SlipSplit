@@ -38,7 +38,7 @@ def evaluate(path, truth):
     parsed = receipt.parse_lines(lines)
     result = {
         "image": data["image"],
-        "lines": [{"text": line["text"], "box": line["box"]} for line in lines],
+        "lines": [{key: line[key] for key in ("text", "box", "poly") if key in line} for line in lines],
         "parsed": parsed,
         "sum_ok": receipt.sum_check(parsed),
     }

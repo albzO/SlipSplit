@@ -20,6 +20,9 @@ folder.mkdir(parents=True, exist_ok=True)
 config = json.load(urllib.request.urlopen(BASE + "/api/config"))
 saved = 0
 for image in config["samples"]:
+    # Runs pulled from a phone keep the OCR output saved with them.
+    if image["name"].startswith("run_"):
+        continue
     target = folder / (Path(image["name"]).stem + ".json")
     if target.exists() and not force:
         continue

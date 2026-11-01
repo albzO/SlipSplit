@@ -31,12 +31,15 @@ fun saveRun(
     val folder = File(root, stamp).apply { mkdirs() }
     val rawLines = JSONArray()
     for (line in lines) {
-        rawLines.put(
-            JSONObject()
-                .put("text", line.text)
-                .put("score", line.score.toDouble())
-                .put("box", JSONArray(line.box.toList())),
-        )
+        val entry = JSONObject()
+            .put("text", line.text)
+            .put("score", line.score.toDouble())
+            .put("box", JSONArray(line.box.toList()))
+        line.corners?.let { corners ->
+            val poly = (0 until 4).map { JSONArray(listOf(corners[it * 2].toInt(), corners[it * 2 + 1].toInt())) }
+            entry.put("poly", JSONArray(poly))
+        }
+        rawLines.put(entry)
     }
     val run = JSONObject()
         .put("engine", tier)

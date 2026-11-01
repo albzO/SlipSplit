@@ -27,6 +27,7 @@ android {
 dependencies {
     implementation("androidx.core:core:1.13.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.1")
 
     testImplementation("junit:junit:4.13.2")

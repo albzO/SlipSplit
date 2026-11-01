@@ -17,7 +17,7 @@ class ReceiptParserTest {
         val fixture = javaClass.getResourceAsStream("/receipts.json")!!
             .bufferedReader(Charsets.UTF_8).readText()
         val samples = JSONArray(fixture)
-        assertEquals(26, samples.length())
+        assertEquals(28, samples.length())
         for (index in 0 until samples.length()) {
             val sample = samples.getJSONObject(index)
             val image = sample.getString("image")
@@ -25,7 +25,11 @@ class ReceiptParserTest {
             val lines = (0 until rawLines.length()).map {
                 val line = rawLines.getJSONObject(it)
                 val box = line.getJSONArray("box")
-                OcrLine(line.getString("text"), IntArray(4) { i -> box.getInt(i) })
+                val poly = line.optJSONArray("poly")
+                val corners = poly?.let {
+                    FloatArray(8) { i -> it.getJSONArray(i / 2).getInt(i % 2).toFloat() }
+                }
+                OcrLine(line.getString("text"), IntArray(4) { i -> box.getInt(i) }, 0f, corners)
             }
             val expected = sample.getJSONObject("expected")
             val rawItems = expected.getJSONArray("items")
@@ -84,6 +88,78 @@ class ReceiptParserTest {
             ),
             receipt.items,
         )
+    }
+
+    @Test
+    fun readsRowsAcrossATiltedPhoto() {
+        val slope = 0.1f
+        fun line(text: String, left: Float, right: Float, top: Float): OcrLine {
+            val corners = floatArrayOf(
+                left, top + left * slope,
+                right, top + right * slope,
+                right, top + 30 + right * slope,
+                left, top + 30 + left * slope,
+            )
+            val box = intArrayOf(
+                left.toInt(), corners[1].toInt(), right.toInt(), corners[5].toInt(),
+            )
+            return OcrLine(text, box, 0f, corners)
+        }
+        val lines = listOf(
+            line("Long black coffee", 0f, 300f, 0f),
+            line("5.50", 700f, 800f, 0f),
+            line("Banana bread slice", 0f, 300f, 50f),
+            line("9.00", 700f, 800f, 50f),
+            line("Avocado on toast", 0f, 300f, 100f),
+            line("7.00", 700f, 800f, 100f),
+            line("TOTAL", 0f, 300f, 150f),
+            line("21.50", 700f, 800f, 150f),
+        )
+        val receipt = parseReceipt(lines)
+        assertEquals(listOf(5.5, 9.0, 7.0), receipt.items.map { it.price })
+        assertEquals(21.5, receipt.total)
+    }
+
+    @Test
+    fun attachesDetailPrintedBelowTheAmountRow() {
+        val rows = listOf(
+            "0369446 BATTERIES ENERGIZER \$3.90" to intArrayOf(0, 0, 800, 30),
+            "ENR CR2025 2PK" to intArrayOf(120, 40, 500, 70),
+            "0011875 BATTERIES AAA \$2.15" to intArrayOf(0, 80, 800, 110),
+            "4PK BBA-4AAA" to intArrayOf(120, 120, 400, 150),
+            "Total \$6.05" to intArrayOf(0, 200, 800, 230),
+        )
+        val lines = rows.map { (text, box) -> OcrLine(text, box) }
+        val receipt = parseReceipt(lines)
+        assertEquals(listOf("ENR CR2025 2PK", "4PK BBA-4AAA"), receipt.items.map { it.spec })
+        assertEquals(lines.subList(0, 2), receipt.items[0].lines)
+    }
+
+    @Test
+    fun keepsAnItemWhenItsAddOnIsBarelyIndented() {
+        val rows = listOf(
+            "large long black @ \$5.50" to intArrayOf(0, 0, 500, 30),
+            ">Kenya @ \$1.00" to intArrayOf(5, 40, 300, 70),
+            "1 x \$6.50 = \$6.50" to intArrayOf(400, 80, 830, 110),
+            "Milk 2.00" to intArrayOf(0, 120, 830, 150),
+            "Subtotal: \$8.50" to intArrayOf(400, 160, 830, 190),
+        )
+        val receipt = parseReceipt(rows.map { (text, box) -> OcrLine(text, box) })
+        assertEquals(ReceiptItem("large long black", 1, 6.5, "", "Kenya"), receipt.items[0])
+    }
+
+    @Test
+    fun treatsRowsBelowAUnitPriceAsItsDetails() {
+        val rows = listOf(
+            "Flat white @ \$5.00" to intArrayOf(0, 0, 500, 30),
+            "Oat milk" to intArrayOf(0, 40, 300, 70),
+            "Extra hot" to intArrayOf(0, 80, 300, 110),
+            "1 x \$5.00 = \$5.00" to intArrayOf(400, 120, 830, 150),
+            "Milk 2.00" to intArrayOf(0, 160, 830, 190),
+            "Subtotal: \$7.00" to intArrayOf(400, 200, 830, 230),
+        )
+        val receipt = parseReceipt(rows.map { (text, box) -> OcrLine(text, box) })
+        assertEquals(ReceiptItem("Flat white", 1, 5.0, "", "Oat milk, Extra hot"), receipt.items[0])
     }
 
     @Test

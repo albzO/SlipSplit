@@ -10,6 +10,7 @@
     <string name="language_english">英文</string>
     <string name="language_chinese">中文</string>
     <string name="status_idle">拍一张小票，全程在手机上识别</string>
+    <string name="status_no_scanner">扫描器不可用，已改用相机</string>
     <string name="status_reading">识别中…</string>
     <string name="status_done">用时 %1$.1f 秒，读到 %2$d 段文字</string>
     <string name="status_error">识别失败：%1$s</string>

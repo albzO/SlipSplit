@@ -3,6 +3,7 @@
 Plain OCR engines go through the same geometry and keyword rules, so a difference
 between them comes from the OCR and not from a different parser.
 """
+import math
 import re
 from difflib import SequenceMatcher
 from itertools import combinations
@@ -15,6 +16,11 @@ MAX_DROPPED_ROWS = 3
 MAX_ITEMS_TO_SEARCH = 30
 MIN_ROWS_ABOVE_SUBTOTAL = 2
 COMPANY_HEIGHT_RATIO = 0.75
+LONG_LINE_RATIO = 3
+FIT_ROUNDS = 3
+FIT_OUTLIER_RATIO = 3
+FIT_MIN_GAIN = 0.7
+MIN_LONG_LINES = 3
 AMOUNT = r"-?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d{1,2})?"
 TRAILING_AMOUNT = re.compile(rf"(?:^|[\s:：xX×*@$¥￥€£]|Rp|RM)({AMOUNT})\s*(?:[-元#*^]|\b[A-Z]\b)?\s*$", re.I)
 LEADING_QTY = re.compile(r"^\s*(\d{1,2})\s*[xX×*]?\s+(?=\S)")
@@ -72,6 +78,32 @@ def to_number(token):
         return None
 
 
+def settle_rows(rows):
+    """Moves each short box to the nearest row; scanning alone takes the first row in reach."""
+    def middle(cell):
+        return (cell["box"][1] + cell["box"][3]) / 2
+
+    def is_long(cell):
+        width = cell["box"][2] - cell["box"][0]
+        return width >= LONG_LINE_RATIO * (cell["box"][3] - cell["box"][1])
+
+    anchors = [max(row["cells"], key=lambda cell: cell["box"][2] - cell["box"][0]) for row in rows]
+    centers = [middle(anchor) for anchor in anchors]
+    moves = []
+    for index, (row, anchor) in enumerate(zip(rows, anchors)):
+        for cell in row["cells"]:
+            if cell is anchor:
+                continue
+            # Only real text rows may take a box over; marks and handwriting are too short.
+            choices = [i for i, other in enumerate(anchors) if is_long(other)] + [index]
+            nearest = min(choices, key=lambda i: abs(centers[i] - middle(cell)))
+            if nearest != index:
+                moves.append((cell, index, nearest))
+    for cell, source, target in moves:
+        rows[source]["cells"] = [item for item in rows[source]["cells"] if item is not cell]
+        rows[target]["cells"].append(cell)
+
+
 def group_rows(lines):
     """Join boxes printed on the same line; lines without boxes stay as they are."""
     boxed = [line for line in lines if line.get("box")]
@@ -85,6 +117,7 @@ def group_rows(lines):
             rows[-1]["cells"].append(line)
         else:
             rows.append({"center": center, "cells": [line]})
+    settle_rows(rows)
     return [
         (
             " ".join(cell["text"] for cell in sorted(row["cells"], key=lambda item: item["box"][0])),
@@ -104,6 +137,72 @@ def trailing_amount(row):
     if len(re.sub(r"\D", "", match.group(1))) > MAX_AMOUNT_DIGITS:
         return None, row
     return to_number(match.group(1)), row[: match.start(1)].rstrip(" :：-@xX×*$¥￥€£")
+
+
+def fit_row_lines(lines_found):
+    """Fits slope = tilt + spread * intercept; printed rows meet at one vanishing point in a photo."""
+    kept = lines_found
+    flat_tilt = median(item[1] for item in lines_found)
+    spread, tilt = 0.0, flat_tilt
+    for _ in range(FIT_ROUNDS):
+        mean_c = sum(item[0] for item in kept) / len(kept)
+        mean_s = sum(item[1] for item in kept) / len(kept)
+        variance = sum((item[0] - mean_c) ** 2 for item in kept)
+        if variance == 0:
+            break
+        spread = sum((item[0] - mean_c) * (item[1] - mean_s) for item in kept) / variance
+        tilt = mean_s - spread * mean_c
+        misses = [abs(item[1] - tilt - spread * item[0]) for item in lines_found]
+        limit = FIT_OUTLIER_RATIO * median(misses)
+        kept = [item for item, miss in zip(lines_found, misses) if miss <= limit] or lines_found
+    # Paper held at odd angles fits nothing; keep perspective only when it clearly explains more.
+    fitted = median(abs(item[1] - tilt - spread * item[0]) for item in lines_found)
+    flat = median(abs(item[1] - flat_tilt) for item in lines_found)
+    if fitted > FIT_MIN_GAIN * flat:
+        return 0.0, flat_tilt
+    return spread, tilt
+
+
+def deskew(lines):
+    """Puts every box in row coordinates, so photos need not be straight or square-on.
+
+    Straight printed rows stay straight in a photo and share a vanishing point, so one fit covers
+    tilt and perspective however far an amount sits from its text.
+    """
+    corners = [line for line in lines if line.get("poly")]
+    if not corners:
+        return lines
+    center_x = sum(point[0] for line in corners for point in line["poly"]) / (4 * len(corners))
+    center_y = sum(point[1] for line in corners for point in line["poly"]) / (4 * len(corners))
+    found = []
+    for line in corners:
+        (x0, y0), (x1, y1), (x2, y2), (x3, y3) = line["poly"]
+        run = (x1 - x0) + (x2 - x3)
+        width = math.hypot(x1 - x0, y1 - y0)
+        height = math.hypot(x3 - x0, y3 - y0)
+        if run > 0 and width >= LONG_LINE_RATIO * height:
+            slope = ((y1 - y0) + (y2 - y3)) / run
+            middle_x = (x0 + x1 + x2 + x3) / 4 - center_x
+            middle_y = (y0 + y1 + y2 + y3) / 4 - center_y
+            found.append((middle_y - slope * middle_x, slope))
+    if len(found) < MIN_LONG_LINES:
+        return lines
+    spread, tilt = fit_row_lines(found)
+    level = []
+    for line in lines:
+        if not line.get("poly"):
+            level.append(line)
+            continue
+        turned = []
+        for x, y in line["poly"]:
+            dx, dy = x - center_x, y - center_y
+            row = (dy - tilt * dx) / (1 + spread * dx)
+            slope = tilt + spread * row
+            turned.append(((dx + dy * slope) / math.sqrt(1 + slope * slope), row))
+        xs = [point[0] for point in turned]
+        ys = [point[1] for point in turned]
+        level.append({**line, "box": [int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))]})
+    return level
 
 
 def price_column(rows, lines):
@@ -216,10 +315,12 @@ def split_sku(text):
 
 def parse_lines(lines):
     result = empty()
+    lines = deskew(lines)
     rows = group_rows(lines)
     column = price_column(rows, lines)
-    # The item being described: name, sku, spec, and where its name row starts.
+    # The item being described: name, sku, spec, where its name row starts, and if it shows a price.
     pending = None
+    last_left = None
     boxes = [line["box"] for line in lines if line.get("box")]
     indent = median(box[3] - box[1] for box in boxes) if boxes else None
 
@@ -278,21 +379,28 @@ def parse_lines(lines):
             pending = None
             continue
         # Only the amount column prices an item; a unit price beside the name is description.
-        if AT_PRICE.search(row):
+        priced = bool(AT_PRICE.search(row))
+        if priced:
             row = AT_PRICE.sub("", row)
             amount = None
         elif amount is not None and column is not None and right < column:
             row = label
             amount = None
+            priced = True
         if amount is None:
             text = ITEM_MARKER.sub("", row).strip()
             if not HAS_NAME.search(text):
                 continue
-            if continues(text, left):
+            sku, name = split_sku(text)
+            # A row with its own price is an item, never a heading: what follows it describes it.
+            if continues(text, left) or (pending and pending["priced"]):
                 pending["spec"] = join_spec(pending["spec"], text)
+            elif (not pending and not sku and result["items"] and left is not None
+                    and last_left is not None and left > last_left + indent):
+                # Amounts can print level with an item's first row, leaving its detail below.
+                result["items"][-1]["spec"] = join_spec(result["items"][-1]["spec"], text)
             else:
-                sku, name = split_sku(text)
-                pending = {"name": name, "sku": sku, "spec": "", "left": left}
+                pending = {"name": name, "sku": sku, "spec": "", "left": left, "priced": priced}
             continue
         if amount < 0:
             result["discount"] = (result["discount"] or 0) + abs(amount)
@@ -307,6 +415,7 @@ def parse_lines(lines):
             if HAS_WORD.search(text) or qty > 1:
                 spec = join_spec(spec, text.rstrip(" ="))
             add_item(pending["name"], qty, amount, pending["sku"], spec)
+            last_left = pending["left"]
             pending = None
             continue
         pending = None
@@ -320,6 +429,7 @@ def parse_lines(lines):
             name = (LEADING_QTY.sub("", name) if LEADING_QTY.match(name)
                     else TRAILING_QTY.sub("", name)).strip()
         add_item(name, qty, amount, sku)
+        last_left = left
     if result["total"] is None:
         result["total"] = result["subtotal"]
     reconcile(result)
