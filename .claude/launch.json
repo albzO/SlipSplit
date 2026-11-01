@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ocr-compare",
+      "runtimeExecutable": "C:\\Project\\OCR\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--app-dir", "app", "--port", "8700"],
+      "port": 8700
+    }
+  ]
+}

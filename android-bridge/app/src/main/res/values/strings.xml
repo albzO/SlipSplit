@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">小票识别</string>
+    <string name="camera">拍照</string>
+    <string name="gallery">从相册选择</string>
+    <string name="model_small">Small</string>
+    <string name="model_tiny">Tiny</string>
+    <string name="model_medium">Medium</string>
+    <string name="language_auto">自动</string>
+    <string name="language_english">英文</string>
+    <string name="language_chinese">中文</string>
+    <string name="status_idle">拍一张小票，全程在手机上识别</string>
+    <string name="status_reading">识别中…</string>
+    <string name="status_done">用时 %1$.1f 秒，读到 %2$d 段文字</string>
+    <string name="status_error">识别失败：%1$s</string>
+    <string name="check_ok">菜品合计与总额一致</string>
+    <string name="check_review">合计对不上，请核对</string>
+    <string name="items">菜品</string>
+    <string name="dropped">已自动剔除（与总额不符，不计入）</string>
+    <string name="no_items">没有解析出菜品</string>
+    <string name="subtotal">小计</string>
+    <string name="tax">税</string>
+    <string name="service">服务费</string>
+    <string name="discount">优惠</string>
+    <string name="total">总额</string>
+    <string name="unknown">未读到</string>
+    <string name="raw_text">查看识别文字</string>
+</resources>

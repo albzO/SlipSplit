@@ -1,0 +1,2 @@
+engine,image,ok,load_ms,infer_ms,model_mb,lines,items,total,total_ok,matched,expected,f1,sum_ok
+vl,au_0.jpg,True,2469,788180,1917.3,61,14,14.89,False,14,14,1.0,False

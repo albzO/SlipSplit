@@ -1,0 +1,19 @@
+.venv*/
+models/
+uploads/
+logs/
+__pycache__/
+android-bridge/.gradle/
+android-bridge/.idea/
+android-bridge/.kotlin/
+android-bridge/build/
+android-bridge/app/build/
+android-bridge/local.properties
+
+# Downloaded models; fetched again from Hugging Face.
+android-bridge/app/src/main/assets/ppocr/*/*.onnx
+
+# Private receipts and NC-licensed samples, plus OCR text derived from them.
+samples/
+ocr_cache/
+android-bridge/app/src/test/resources/receipts.json

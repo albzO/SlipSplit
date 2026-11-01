@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="unused_box">#A0A4A8</color>
+    <integer-array name="item_colors">
+        <item>0xFFD7263D</item>
+        <item>0xFF1B6EF3</item>
+        <item>0xFFF28C00</item>
+        <item>0xFF8E24AA</item>
+        <item>0xFF2E9E44</item>
+        <item>0xFFE91E8C</item>
+        <item>0xFF795548</item>
+        <item>0xFF00A3C4</item>
+    </integer-array>
+</resources>
