@@ -262,4 +262,107 @@ class ReceiptParserTest {
         assertEquals(0.41, receipt.tax)
         assertEquals(1.95, receipt.service)
     }
+
+    @Test
+    fun readsTheAmountColumnWhenOtherColumnsFollowIt() {
+        val rows = listOf(
+            "商品名/条码" to intArrayOf(71, 200, 254, 244),
+            "数量" to intArrayOf(325, 205, 391, 246),
+            "单价" to intArrayOf(431, 208, 497, 249),
+            "金额" to intArrayOf(525, 209, 596, 250),
+            "折扣" to intArrayOf(634, 208, 704, 249),
+            "1.蓝莓22+" to intArrayOf(38, 272, 205, 318),
+            "2200198" to intArrayOf(633, 283, 751, 325),
+            "1" to intArrayOf(324, 325, 343, 353),
+            "*12.8" to intArrayOf(381, 321, 466, 358),
+            "8.96" to intArrayOf(538, 324, 609, 362),
+            "3.84" to intArrayOf(665, 325, 733, 361),
+            "3、立农维康油麦菜" to intArrayOf(38, 428, 309, 476),
+            "2200184" to intArrayOf(555, 440, 673, 477),
+            "1 *4.5" to intArrayOf(318, 477, 451, 512),
+            "3.5" to intArrayOf(552, 478, 611, 516),
+            "1" to intArrayOf(698, 481, 719, 512),
+            "4、鲜牛奶780ml+" to intArrayOf(38, 509, 403, 554),
+            "6922577739784" to intArrayOf(474, 515, 688, 554),
+            "1" to intArrayOf(319, 556, 347, 586),
+            "*19.9" to intArrayOf(377, 553, 466, 589),
+            "19.9 0" to intArrayOf(539, 554, 722, 592),
+            "购买件数：5件 应收:54.6" to intArrayOf(40, 741, 386, 782),
+            "实收:32.36 找零:0" to intArrayOf(42, 780, 309, 820),
+            "总优惠：4.84会员:12345678" to intArrayOf(41, 818, 435, 858),
+        )
+        val receipt = parseReceipt(rows.map { (text, box) -> OcrLine(text, box) })
+        assertEquals(listOf("蓝莓22+", "立农维康油麦菜", "鲜牛奶780ml+"), receipt.items.map { it.name })
+        assertEquals(listOf("2200198", "2200184", "6922577739784"), receipt.items.map { it.sku })
+        assertEquals(listOf(8.96, 3.5, 19.9), receipt.items.map { it.price })
+        assertEquals(32.36, receipt.total)
+        assertEquals(4.84, receipt.discount)
+    }
+
+    @Test
+    fun readsAnEnglishTableJoinedIntoOneBoxPerRow() {
+        val rows = listOf(
+            "Item Qty Price Amount GST" to intArrayOf(0, 0, 500, 30),
+            "Flat White 2 5.00 10.00 0.91" to intArrayOf(0, 40, 560, 70),
+            "Banana Bread 1 6.50 6.50 0.59" to intArrayOf(0, 80, 580, 110),
+            "Total 16.50" to intArrayOf(0, 120, 300, 150),
+        )
+        val receipt = parseReceipt(rows.map { (text, box) -> OcrLine(text, box) })
+        assertEquals(listOf("Flat White", "Banana Bread"), receipt.items.map { it.name })
+        assertEquals(listOf(2, 1), receipt.items.map { it.qty })
+        assertEquals(listOf(10.0, 6.5), receipt.items.map { it.price })
+        assertEquals(16.5, receipt.total)
+    }
+
+    @Test
+    fun treatsTotalAsTheAmountColumnWhenGstFollowsIt() {
+        val rows = listOf(
+            "Item" to intArrayOf(0, 0, 100, 30),
+            "Qty" to intArrayOf(300, 0, 350, 30),
+            "Price" to intArrayOf(400, 0, 480, 30),
+            "Total" to intArrayOf(520, 0, 600, 30),
+            "GST" to intArrayOf(650, 0, 710, 30),
+            "Sausage Roll" to intArrayOf(0, 40, 200, 70),
+            "1" to intArrayOf(310, 40, 330, 70),
+            "4.50" to intArrayOf(410, 40, 470, 70),
+            "4.50" to intArrayOf(530, 40, 590, 70),
+            "0.41" to intArrayOf(650, 40, 710, 70),
+            "Water" to intArrayOf(0, 80, 100, 110),
+            "2" to intArrayOf(310, 80, 330, 110),
+            "3.00" to intArrayOf(410, 80, 470, 110),
+            "6.00" to intArrayOf(530, 80, 590, 110),
+            "Grand Total 10.50" to intArrayOf(0, 120, 590, 150),
+        )
+        val receipt = parseReceipt(rows.map { (text, box) -> OcrLine(text, box) })
+        assertEquals(listOf("Sausage Roll", "Water"), receipt.items.map { it.name })
+        assertEquals(listOf(1, 2), receipt.items.map { it.qty })
+        assertEquals(listOf(4.5, 6.0), receipt.items.map { it.price })
+        assertEquals(10.5, receipt.total)
+    }
+
+    @Test
+    fun readsEnglishLabelsSharingARow() {
+        val rows = listOf(
+            "Milk 2.00" to intArrayOf(0, 0, 400, 30),
+            "Bread 3.00" to intArrayOf(0, 40, 400, 70),
+            "Paid: 5.00 Change: 0.00" to intArrayOf(0, 80, 400, 110),
+            "Discount: 1.00 Member: 12345678" to intArrayOf(0, 120, 400, 150),
+        )
+        val receipt = parseReceipt(rows.map { (text, box) -> OcrLine(text, box) })
+        assertEquals(5.0, receipt.total)
+        assertEquals(1.0, receipt.discount)
+    }
+
+    @Test
+    fun keepsTheLastColumnWhenAmountEndsTheHeader() {
+        val rows = listOf(
+            "Item Qty Amount" to intArrayOf(0, 0, 500, 30),
+            "Flat White 1 5.00" to intArrayOf(0, 40, 500, 70),
+            "Scone 1 6.00" to intArrayOf(0, 80, 500, 110),
+            "Total 11.00" to intArrayOf(0, 120, 500, 150),
+        )
+        val receipt = parseReceipt(rows.map { (text, box) -> OcrLine(text, box) })
+        assertEquals(listOf(5.0, 6.0), receipt.items.map { it.price })
+        assertEquals(11.0, receipt.total)
+    }
 }

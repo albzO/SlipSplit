@@ -74,11 +74,11 @@ class PhotoReviewActivity : Activity() {
         autoDetect = findViewById(R.id.reviewAutoDetect)
         flatten = findViewById(R.id.reviewFlatten)
         backend = findViewById(R.id.reviewBackend)
-        val initial = state?.getString(BACKEND) ?: intent.getStringExtra(BACKEND) ?: "dewarpnet"
+        val initial = state?.getString(BACKEND) ?: intent.getStringExtra(BACKEND) ?: "uvdoc"
         flatten.isChecked = initial != "none"
         backend.check(when (initial) {
-            "uvdoc" -> R.id.reviewUvdoc
-            else -> R.id.reviewDewarpNet
+            "dewarpnet" -> R.id.reviewDewarpNet
+            else -> R.id.reviewUvdoc
         })
         folder = state?.getString("folder")?.let(::File)
             ?: File(cacheDir, "photos/review-${UUID.randomUUID()}")
@@ -227,8 +227,8 @@ class PhotoReviewActivity : Activity() {
 
     private fun selectedBackend() = if (!flatten.isChecked) "none"
         else when (backend.checkedRadioButtonId) {
-            R.id.reviewUvdoc -> "uvdoc"
-            else -> "dewarpnet"
+            R.id.reviewDewarpNet -> "dewarpnet"
+            else -> "uvdoc"
         }
 
     private fun beginPreview() {
@@ -280,7 +280,7 @@ class PhotoReviewActivity : Activity() {
                         if (index % 2 == 0) corners[index] * (original.width - 1f) / (photo.width - 1f)
                         else corners[index] * (original.height - 1f) / (photo.height - 1f)
                     }
-                    val rectified = Perspective.rectify(original, fullCorners)
+                    val rectified = Perspective.rectifyPadded(original, fullCorners)
                     main.post {
                         if (!isCurrent(revision)) {
                             rectified.recycle()

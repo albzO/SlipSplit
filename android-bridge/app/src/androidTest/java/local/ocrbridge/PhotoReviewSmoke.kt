@@ -103,14 +103,14 @@ class PhotoReviewSmoke : Instrumentation() {
                 check(field.get(review) == null)
             }
             capture("review-perspective.png")
-            await("DewarpNet preview") { next.isEnabled }
+            await("UVDoc preview") { next.isEnabled }
             capture("review-preview.png")
             runOnMainSync { check(review.findViewById<View>(R.id.reviewStatus).visibility == View.GONE) }
             runOnMainSync {
-                review.findViewById<RadioGroup>(R.id.reviewBackend).check(R.id.reviewUvdoc)
+                review.findViewById<RadioGroup>(R.id.reviewBackend).check(R.id.reviewDewarpNet)
                 check(!next.isEnabled)
             }
-            await("UVDoc preview") { next.isEnabled }
+            await("DewarpNet preview") { next.isEnabled }
             runOnMainSync { review.findViewById<CheckBox>(R.id.reviewFlatten).isChecked = false }
             await("perspective only") { next.isEnabled }
             runOnMainSync { review.findViewById<View>(R.id.reviewEdit).performClick() }

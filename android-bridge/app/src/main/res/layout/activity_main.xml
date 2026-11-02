@@ -111,23 +111,31 @@
             android:id="@+id/flattenModel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:checkedButton="@+id/dewarpnet"
+            android:checkedButton="@+id/uvdoc"
             android:orientation="horizontal">
             <RadioButton
-                android:id="@id/dewarpnet"
+                android:id="@+id/dewarpnet"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:textSize="14sp"
                 android:text="@string/flatten_dewarpnet" />
             <RadioButton
-                android:id="@+id/uvdoc"
+                android:id="@id/uvdoc"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:textSize="14sp"
                 android:text="@string/flatten_uvdoc" />
         </RadioGroup>
+
+        <Button
+            android:id="@+id/exportData"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/export_data"
+            android:textColor="@color/accent" />
 
         <TextView
             android:id="@+id/status"

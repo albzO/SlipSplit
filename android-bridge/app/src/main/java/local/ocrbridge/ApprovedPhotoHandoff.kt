@@ -52,7 +52,7 @@ internal object ApprovedPhotoHandoff {
                 if (i % 2 == 0) corners[i] * (original.width - 1f) / (width - 1f)
                 else corners[i] * (original.height - 1f) / (height - 1f)
             }
-            Perspective.rectify(original, points)
+            Perspective.rectifyPadded(original, points)
         } finally {
             original.recycle()
         }

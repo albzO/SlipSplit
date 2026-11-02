@@ -10,6 +10,10 @@
     <string name="language_english">英文</string>
     <string name="language_chinese">中文</string>
     <string name="status_reading">识别中…</string>
+    <string name="export_data">导出历史数据</string>
+    <string name="export_packing">正在打包历史数据…</string>
+    <string name="export_empty">还没有可导出的识别记录</string>
+    <string name="export_title">分享历史数据</string>
     <string name="flatten">曲面矫正</string>
     <string name="flatten_dewarpnet">DewarpNet</string>
     <string name="flatten_uvdoc">UVDoc</string>

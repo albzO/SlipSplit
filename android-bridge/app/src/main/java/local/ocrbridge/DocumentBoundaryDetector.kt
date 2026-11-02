@@ -130,9 +130,8 @@ internal object DocumentBoundaryDetector {
             }
 
             val found = best ?: return null
-            val padded = expand(found.points, minOf(width, height) * 0.03)
             return FloatArray(8) { index ->
-                val point = padded[index / 2]
+                val point = found.points[index / 2]
                 if (index % 2 == 0) (point.x * photo.width / width).toFloat().coerceIn(0f, photo.width - 1f)
                 else (point.y * photo.height / height).toFloat().coerceIn(0f, photo.height - 1f)
             }.takeIf(Perspective::valid)
@@ -142,18 +141,6 @@ internal object DocumentBoundaryDetector {
     }
 
     private data class Candidate(val points: List<Point>, val score: Double)
-
-    /** A small outward margin protects characters near irregular/folded paper edges. */
-    fun expand(points: List<Point>, margin: Double): List<Point> = List(4) { i ->
-        val a = points[(i + 3) % 4]; val b = points[i]; val c = points[(i + 1) % 4]
-        val previousLength = hypot(b.x - a.x, b.y - a.y)
-        val nextLength = hypot(c.x - b.x, c.y - b.y)
-        val nx1 = -(b.y - a.y) / previousLength; val ny1 = (b.x - a.x) / previousLength
-        val nx2 = -(c.y - b.y) / nextLength; val ny2 = (c.x - b.x) / nextLength
-        val determinant = nx1 * ny2 - ny1 * nx2
-        if (abs(determinant) < 0.01) b
-        else Point(b.x + margin * (ny1 - ny2) / determinant, b.y + margin * (nx2 - nx1) / determinant)
-    }
 
     private fun score(raw: Array<Point>, contourArea: Double, width: Int, height: Int, distances: FloatArray,
                       colors: ByteArray): Candidate? {

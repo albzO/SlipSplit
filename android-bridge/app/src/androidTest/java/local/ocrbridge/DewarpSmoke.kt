@@ -27,7 +27,7 @@ class DewarpSmoke : Instrumentation() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             runOnMainSync {
                 check(activity.findViewById<CheckBox>(R.id.flatten).isChecked)
-                check(activity.findViewById<RadioGroup>(R.id.flattenModel).checkedRadioButtonId == R.id.dewarpnet)
+                check(activity.findViewById<RadioGroup>(R.id.flattenModel).checkedRadioButtonId == R.id.uvdoc)
             }
             val root = requireNotNull(targetContext.getExternalFilesDir(null))
             val source = requireNotNull(BitmapFactory.decodeFile(File(root, "smoke.jpg").path))

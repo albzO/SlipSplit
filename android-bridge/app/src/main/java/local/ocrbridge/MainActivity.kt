@@ -1,6 +1,7 @@
 package local.ocrbridge
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -17,6 +18,9 @@ import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.core.content.FileProvider
 import java.io.File
+import java.util.Locale
+import java.util.Date
+import java.text.SimpleDateFormat
 import java.util.concurrent.Executors
 import kotlin.math.roundToLong
 
@@ -40,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var language: RadioGroup
     private lateinit var flatten: CheckBox
     private lateinit var flattenModel: RadioGroup
+    private lateinit var exportData: Button
     private lateinit var status: TextView
     private lateinit var preview: BoxImageView
     private lateinit var result: View
@@ -75,6 +80,8 @@ class MainActivity : Activity() {
         photoUri = savedInstanceState?.getString(STATE_PHOTO)?.let(Uri::parse)
         camera.setOnClickListener { takePhoto() }
         gallery.setOnClickListener { pickPhoto() }
+        exportData = findViewById(R.id.exportData)
+        exportData.setOnClickListener { shareRuns() }
         findViewById<View>(R.id.rawToggle).setOnClickListener {
             raw.visibility = if (raw.visibility == View.VISIBLE) View.GONE else View.VISIBLE
         }
@@ -93,6 +100,37 @@ class MainActivity : Activity() {
         }
         worker.shutdown()
         super.onDestroy()
+    }
+
+    /** Zips the run log off the main thread, then lets the user pick where it goes. */
+    private fun shareRuns() {
+        val runs = getExternalFilesDir("runs") ?: return
+        setBusy(true)
+        status.text = getString(R.string.export_packing)
+        status.visibility = View.VISIBLE
+        worker.execute {
+            try {
+                val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+                val archive = RunExport.pack(runs, File(cacheDir, "exports"), stamp)
+                main.post {
+                    if (isDestroyed) return@post
+                    setBusy(false)
+                    if (archive == null) {
+                        status.text = getString(R.string.export_empty)
+                        return@post
+                    }
+                    status.visibility = View.GONE
+                    val uri = FileProvider.getUriForFile(this, "$packageName.files", archive)
+                    val send = Intent(Intent.ACTION_SEND).setType("application/zip")
+                        .putExtra(Intent.EXTRA_STREAM, uri)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    send.clipData = ClipData.newRawUri(archive.name, uri)
+                    startActivity(Intent.createChooser(send, getString(R.string.export_title)))
+                }
+            } catch (error: Exception) {
+                main.post { if (!isDestroyed) showError(error) }
+            }
+        }
     }
 
     private fun takePhoto() {
@@ -137,8 +175,8 @@ class MainActivity : Activity() {
     private fun reviewPhoto(uri: Uri) {
         val backend = if (!flatten.isChecked) "none"
             else when (flattenModel.checkedRadioButtonId) {
-                R.id.uvdoc -> "uvdoc"
-                else -> "dewarpnet"
+                R.id.dewarpnet -> "dewarpnet"
+                else -> "uvdoc"
             }
         // Release the last OCR session before the review screen loads its dewarping model.
         worker.execute {
@@ -164,6 +202,7 @@ class MainActivity : Activity() {
     private fun setBusy(busy: Boolean) {
         camera.isEnabled = !busy
         gallery.isEnabled = !busy
+        exportData.isEnabled = !busy
         flatten.isEnabled = !busy
         for (group in listOf(model, language, flattenModel)) {
             for (index in 0 until group.childCount) group.getChildAt(index).isEnabled = !busy
@@ -178,8 +217,8 @@ class MainActivity : Activity() {
         val originalUri = approved.getStringExtra(PhotoReviewActivity.ORIGINAL)?.let(Uri::parse)
         flatten.isChecked = backend != "none"
         flattenModel.check(when (backend) {
-            "uvdoc" -> R.id.uvdoc
-            else -> R.id.dewarpnet
+            "dewarpnet" -> R.id.dewarpnet
+            else -> R.id.uvdoc
         })
         setBusy(true)
         result.visibility = View.GONE

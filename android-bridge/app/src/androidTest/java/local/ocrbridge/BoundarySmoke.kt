@@ -70,7 +70,7 @@ class BoundarySmoke : Instrumentation() {
                         if (i % 2 == 0) masked[i] * (full.width - 1f) / (photo.width - 1f)
                         else masked[i] * (full.height - 1f) / (photo.height - 1f)
                     }
-                    val rectified = Perspective.rectify(full, corners)
+                    val rectified = Perspective.rectifyPadded(full, corners)
                     val flat = Dewarper(targetContext).use { it.flatten(rectified) }
                     val readStart = System.nanoTime()
                     // The app also keeps one large model loaded at a time.

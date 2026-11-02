@@ -26,7 +26,6 @@ private const val MASK_THRESHOLD = 0.5f
 private const val MIN_AREA = 0.03
 private const val MAX_AREA = 0.97
 private const val MIN_FILL = 0.7
-private const val MARGIN = 0.015
 private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
 private val STD = floatArrayOf(0.229f, 0.224f, 0.225f)
 private val POLYGON_TOLERANCES = doubleArrayOf(0.01, 0.02, 0.03, 0.05, 0.08, 0.12)
@@ -112,9 +111,8 @@ internal object PaperBoundary {
             if (area / (width * height) !in MIN_AREA..MAX_AREA) return null
             val points = fourCorners(contour) ?: return null
             if (area / polygonArea(points) < MIN_FILL) return null
-            val padded = DocumentBoundaryDetector.expand(points, minOf(width, height) * MARGIN)
             return FloatArray(8) { index ->
-                val point = padded[index / 2]
+                val point = points[index / 2]
                 if (index % 2 == 0) (point.x * photoWidth / width).toFloat().coerceIn(0f, photoWidth - 1f)
                 else (point.y * photoHeight / height).toFloat().coerceIn(0f, photoHeight - 1f)
             }.takeIf(Perspective::valid)

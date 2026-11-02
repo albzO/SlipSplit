@@ -77,6 +77,14 @@ private val TRAILING_AMOUNT = regex(
 private val LEADING_QTY = Regex("^$S*([0-9]{1,2})(?:$S*[xX×*]$S*|$S+)(?=[^\\s\\u3000])")
 private val MODIFIER = Regex("^$S*(?:-+$S|\\[\\*\\]$S*|\\+$S)")
 private val COUNT_START = Regex("^$S*[0-9]+$S*[xX×*]")
+private val ITEM_INDEX = Regex("^$S*[0-9]{1,3}$S*[.、)）]$S*(?=[^0-9\\s\\u3000])")
+private val TRAILING_CODE = Regex("$S+([0-9]{6,})$S*$")
+private val AMOUNT_HEADER = regex("^$S*(?:金额|金額|amount|amt\\.?|total)$S*:?$S*$")
+private val QUANTITY_HEADER = regex("数量|數量|单价|單價|${START}qty$END|${START}quantity$END|${START}price$END|${START}unit$END|${START}rate$END")
+private val NUMBER_TOKEN = Regex("^[*xX×@\$¥￥]?(?:$AMOUNT)$")
+private val CENTS = Regex("[.,][0-9]{1,2}$")
+private val PAID_AMOUNT = regex("(?:实[付收]|實[付收]|${START}paid$END)$S*[:：]?$S*[\$¥￥]?($AMOUNT)(?![0-9.,%])")
+private val SAVED_AMOUNT = regex("(?:优惠|優惠|折扣|${START}discount$END|${START}disc$END|${START}saved$END|${START}savings$END)$S*[:：]?$S*[\$¥￥]?($AMOUNT)(?![0-9.,%折])")
 private val TRAILING_QTY = Regex("$S+[xX×*]$S*([0-9]{1,2})$S*$")
 private val DATE_OR_TIME = Regex("[0-9]{1,4}[-/.:][0-9]{1,2}[-/.:][0-9]{1,4}|[0-9]{1,2}:[0-9]{2}")
 private val QTY_IN_ROW = regex("(?:^|$S)(?:qty$S*)?([0-9]{1,2})$S*[xX×*@]")
@@ -431,12 +439,64 @@ private fun splitSku(text: String): Pair<String, String> {
     return if (HAS_NAME.containsMatchIn(rest)) match.groupValues[1] to rest else "" to text
 }
 
-private fun clean(text: String) = text.replace(ITEM_MARKER, "").replace(MODIFIER, "").trim()
+private fun clean(text: String) =
+    text.replace(ITEM_MARKER, "").replace(MODIFIER, "").replace(ITEM_INDEX, "").trim()
 
 private fun isModifier(row: ItemRow) = MODIFIER.containsMatchIn(row.text)
 
-/** A quantity or stock number printed where an item begins. */
-private fun hasStart(text: String) = SKU_PREFIX.containsMatchIn(text) || LEADING_QTY.containsMatchIn(text)
+/** A quantity, stock number or list number printed where an item begins. */
+private fun hasStart(text: String): Boolean {
+    val bare = text.replace(ITEM_MARKER, "").replace(MODIFIER, "")
+    return SKU_PREFIX.containsMatchIn(bare) || LEADING_QTY.containsMatchIn(bare) ||
+        ITEM_INDEX.containsMatchIn(bare)
+}
+
+/** Where a table header puts the amount when other columns print to its right. */
+private class AmountColumn(val row: Int, val center: Double, val columnsAfter: Int)
+
+private class Word(val text: String, val center: Double)
+
+/** Words in a row with their estimated x, as OCR may join a whole row into one box. */
+private fun wordsOf(row: ReceiptRow): List<Word> = row.cells.flatMap { cell ->
+    val box = cell.aligned
+    val share = (box[2] - box[0]).toDouble() / cell.text.length.coerceAtLeast(1)
+    Regex("[^\\s\\u3000]+").findAll(cell.text)
+        .map { Word(it.value, box[0] + share * (it.range.first + it.range.last + 1) / 2) }
+        .toList()
+}
+
+private fun findAmountColumn(rows: List<ReceiptRow>): AmountColumn? {
+    rows.forEachIndexed { index, row ->
+        val words = wordsOf(row)
+        val at = words.indexOfFirst { AMOUNT_HEADER.matches(it.text) }
+        val after = words.drop(at + 1)
+        // A payment table also has an amount column; only an item table has quantity or unit price.
+        val itemTable = words.take(at.coerceAtLeast(0)).any { QUANTITY_HEADER.containsMatchIn(it.text) }
+        if (at > 0 && itemTable && after.isNotEmpty() && row.text.none { it.isDigit() || it == ':' || it == '：' }) {
+            return AmountColumn(index, words[at].center, after.size)
+        }
+    }
+    return null
+}
+
+/** The amount under its header; a lone whole number, such as a barcode, is not a table row. */
+private fun amountInColumn(row: ReceiptRow, column: AmountColumn): Pair<Double?, String> {
+    val numbers = wordsOf(row).filter { NUMBER_TOKEN.matches(it.text) }
+    if (numbers.isEmpty() || (numbers.size == 1 && !CENTS.containsMatchIn(numbers[0].text))) return null to row.text
+    // Character positions drift in a row joined into one box, but columns keep their order.
+    val fromRight = numbers.getOrNull(numbers.size - 1 - column.columnsAfter)
+    val chosen = (if (row.cells.size == 1) fromRight else null) ?: numbers.minBy { abs(it.center - column.center) }
+    var label = row.text.substring(0, row.text.lastIndexOf(chosen.text)).trimEnd()
+    val named = label.split(' ', '\u3000').filter { it.isNotEmpty() }
+    val text = named.dropLastWhile { NUMBER_TOKEN.matches(it) }
+    if (text.any { HAS_NAME.containsMatchIn(it) }) {
+        // Quantity and unit price columns sit between the name and the amount.
+        val counts = named.drop(text.size)
+        val qty = counts.takeIf { it.size >= 2 }?.firstOrNull { it.all(Char::isDigit) }
+        label = text.joinToString(" ") + if (qty != null) " x $qty" else ""
+    }
+    return toNumber(chosen.text) to label
+}
 
 /** True when a priced row also carries a name, not only `1 x $3.00 = $3.00`. */
 private fun namedPrice(row: ItemRow) =
@@ -456,8 +516,11 @@ private fun amountComesLast(entries: List<ItemRow?>): Boolean {
 }
 
 private fun Receipt.addItem(text: String, price: Double, spec: String, cells: List<OcrLine>) {
-    val (sku, parsed) = splitSku(text)
-    var name = parsed
+    var (sku, name) = splitSku(text)
+    TRAILING_CODE.find(name)?.takeIf { sku.isEmpty() }?.let {
+        sku = it.groupValues[1]
+        name = name.substring(0, it.range.first)
+    }
     var qty = 1
     val leading = LEADING_QTY.find(name)
     val trailing = TRAILING_QTY.find(name)
@@ -480,7 +543,7 @@ private fun Receipt.addDetail(row: ItemRow) {
 /** One item from the rows up to its amount: the first row starts it, the rest wrap or detail it. */
 private fun Receipt.addBlock(rows: List<ItemRow>, closing: ItemRow, anchored: Boolean, wrapRight: Double) {
     var block = rows
-    val marked = block.indexOfLast { hasStart(clean(it.text)) }
+    val marked = block.indexOfLast { hasStart(it.text) }
     // With no heading above the first item, its unit price or the row touching its amount shows it.
     val start = when {
         marked >= 0 -> marked
@@ -564,10 +627,16 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
     deskew(lines)
     val rows = groupRows(lines)
     val column = priceColumn(rows, lines)
+    val table = findAmountColumn(rows)
     // Item rows in print order; null marks a row that separates items, such as a heading.
     val entries = ArrayList<ItemRow?>()
 
-    for (entry in rows) {
+    for ((index, entry) in rows.withIndex()) {
+        if (index == table?.row) {
+            entries.clear()
+            entries.add(null)
+            continue
+        }
         var row = entry.text
         var (amount, label) = trailingAmount(row)
         val waiting = pendingField
@@ -578,6 +647,16 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
             continue
         }
         pendingField = null
+        // Several labelled values can share a row, so the last number need not be the wanted one.
+        val paid = PAID_AMOUNT.find(row)
+        val saved = SAVED_AMOUNT.find(row)
+        if (paid != null || saved != null) {
+            paid?.let { result.setOnce(Field.TOTAL, abs(toNumber(it.groupValues[1]) ?: 0.0)) }
+            saved?.let { result.setOnce(Field.DISCOUNT, abs(toNumber(it.groupValues[1]) ?: 0.0)) }
+            result.fieldLines.addAll(entry.cells)
+            entries.add(null)
+            continue
+        }
         if (PAYMENT.containsMatchIn(row)) {
             entries.add(null)
             continue
@@ -607,7 +686,11 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
         }
         // Only the amount column prices an item; a unit price beside the name is description.
         val unitPriced = AT_PRICE.containsMatchIn(row)
-        if (unitPriced) {
+        if (table != null && index > table.row) {
+            val read = amountInColumn(entry, table)
+            amount = read.first
+            label = read.second
+        } else if (unitPriced) {
             row = row.replace(AT_PRICE, "")
             amount = null
         } else if (amount != null && column != null && entry.right < column) {
