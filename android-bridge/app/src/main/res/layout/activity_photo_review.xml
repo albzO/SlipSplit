@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:fitsSystemWindows="true" android:background="?android:colorBackground">
+<LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="16dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical">
+    <TextView android:id="@+id/reviewTitle" android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="wrap_content" android:text="@string/review_crop_title"
+        android:textColor="?android:textColorPrimary" android:textStyle="bold" android:textSize="22sp" />
+    <Button android:id="@+id/reviewAutoDetect" style="?android:borderlessButtonStyle"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="@string/review_auto_detect" />
+    </LinearLayout>
+    <local.ocrbridge.QuadCropView android:id="@+id/reviewImage"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:layout_marginVertical="8dp" android:background="#101918"
+        android:contentDescription="@string/review_image_description" />
+    <LinearLayout android:id="@+id/reviewOptions" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+        <CheckBox android:id="@+id/reviewFlatten" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="@string/flatten" />
+        <RadioGroup android:id="@+id/reviewBackend" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="horizontal">
+            <RadioButton android:id="@+id/reviewDewarpNet" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="@string/flatten_dewarpnet"
+                android:textSize="14sp" android:layout_marginEnd="8dp" />
+            <RadioButton android:id="@+id/reviewUvdoc" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="@string/flatten_uvdoc"
+                android:textSize="14sp" android:layout_marginEnd="8dp" />
+        </RadioGroup>
+    </LinearLayout>
+    <TextView android:id="@+id/reviewStatus" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:visibility="gone"
+        android:textColor="?android:textColorSecondary" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <Button android:id="@+id/reviewEdit" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:layout_marginEnd="8dp" android:text="@string/review_reset" />
+        <Button android:id="@+id/reviewContinue" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:text="@string/review_preview"
+            android:backgroundTint="@color/accent" android:textColor="@color/on_accent" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <Button android:id="@+id/reviewPickAgain" style="?android:borderlessButtonStyle"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:text="@string/review_pick_again" />
+        <Button android:id="@+id/reviewRetake" style="?android:borderlessButtonStyle"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:text="@string/review_retake" />
+    </LinearLayout>
+</LinearLayout>
+</FrameLayout>

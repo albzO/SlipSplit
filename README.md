@@ -32,10 +32,22 @@ python benchmark.py ppocr_tiny,ppocr_small 8
 
 用 Android Studio 打开 `android-bridge/`，选好设备后点 Run。App 独立运行，不需要电脑或网络。
 
+拍照或从相册选择后，u2netp 分割出小票并求四角，失败时退回 OpenCV 找边；可手动微调或重新找边。
+都没有找到时保留整张照片。模型在 `assets/u2netp/`，被 Git 忽略，来源和 SHA256 见同目录 `README.txt`。确认四角后做梯形矫正，再运行所选的曲面矫正模型。
+拖动四角时显示避开手指的放大镜。预览先显示梯形矫正图，再执行曲面矫正。
+预览页可双指放大，切换 DewarpNet / UVDoc、关闭曲面矫正或返回调整四角；不满意可以重选、重拍。
+确认“使用这张并识别”后才回主界面运行 OCR，不会再次矫正图片。相册仍通过系统选择器授权单张照片，
+不需要读取整个相册。该流程不依赖 Google 文档扫描器。
+确认时直接在内存中交接已矫正图片，不额外保存临时 PNG 再读取；识别结果显示后才后台保存诊断记录。
+
+安卓端不再嵌入 Python，也不需要 Python 3.10 打包。自动找边使用 `org.opencv:opencv:4.12.0`，
+离线运行，当前支持 arm64-v8a / x86_64。流程说明见 [docs/photo-review.md](docs/photo-review.md)。
+
 - `PpOcr.kt`：ONNX Runtime 上的 PP-OCRv6 检测和识别。
 - `Language.kt`：自动 / 英文 / 中文。英文模式在解码时只允许英文字符；自动模式在中日韩字符占比低于 15% 时按英文处理。
-- `ReceiptParser.kt`：`app/receipt.py` 的 Kotlin 版，只把右侧金额列的数字算作菜品价格。改规则时两边都要改；
-  `app/src/test/resources/receipts.json` 是样本上的 Python 输出，`ReceiptParserTest` 用它做对照。
+- `ReceiptParser.kt`：解析规则的主版本，先按金额切成菜品块，再细分每块内的菜名、规格和金额。
+  新规则先写这里。`app/src/test/resources/receipts.json` 是样本上的历史 Python 输出，`ReceiptParserTest` 用它防止退步。
+- `TextLevel.kt`：用 OCR 框拟合行斜率场。行弯曲或倾斜明显时校平图片并重读一次。
 
 ## 测试后处理
 
@@ -82,7 +94,7 @@ Paddle 关闭了 oneDNN（3.3 版有兼容问题），电脑耗时偏保守。PP
 
 ML Kit 只测了拉丁文识别器，读不了样本里的 8 张中日韩小票。只看其余 15 张拉丁文小票：
 PP-OCRv6 Small 总额 15/15，ML Kit 10/15。ML Kit 耗时来自 25098PN5AC 真机，其他模型是电脑 CPU，不能直接比较。
-App 已不再包含 ML Kit，这组结果保留在 `bench_mlkit.csv` 和 `bench_android.csv` 作记录。
+App 已不再包含 ML Kit；这组历史文字识别结果保留在 `bench_mlkit.csv` 和 `bench_android.csv` 作记录。
 
 上面的分数早于金额列切分等规则改动。最新规则下 PP-OCRv6 三档在 24 张样本上的结果（电脑 CPU，见 `bench_tiers.csv`）：
 

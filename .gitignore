@@ -12,6 +12,8 @@ android-bridge/local.properties
 
 # Downloaded models; fetched again from Hugging Face.
 android-bridge/app/src/main/assets/ppocr/*/*.onnx
+android-bridge/app/src/main/assets/dewarpnet/*.tflite
+android-bridge/app/src/main/assets/u2netp/*.onnx
 
 # Private receipts and NC-licensed samples, plus OCR text derived from them.
 samples/

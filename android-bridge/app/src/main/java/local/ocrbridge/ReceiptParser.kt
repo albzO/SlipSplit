@@ -65,6 +65,7 @@ private const val FIT_ROUNDS = 3
 private const val FIT_OUTLIER_RATIO = 3.0
 private const val FIT_MIN_GAIN = 0.7
 private const val MIN_LONG_LINES = 3
+private const val WRAP_RATIO = 0.75
 private const val AMOUNT =
     "-?[0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{1,2})?|-?[0-9]+(?:[.,][0-9]{1,2})?"
 
@@ -73,7 +74,9 @@ private fun regex(pattern: String) = Regex(pattern, RegexOption.IGNORE_CASE)
 private val TRAILING_AMOUNT = regex(
     "(?:^|[\\s\\u3000:：xX×*@\$¥￥€£]|Rp|RM)($AMOUNT)$S*(?:[-元#*^]|$START[A-Z]$END)?$S*$",
 )
-private val LEADING_QTY = Regex("^$S*([0-9]{1,2})$S*[xX×*]?$S+(?=[^\\s\\u3000])")
+private val LEADING_QTY = Regex("^$S*([0-9]{1,2})(?:$S*[xX×*]$S*|$S+)(?=[^\\s\\u3000])")
+private val MODIFIER = Regex("^$S*(?:-+$S|\\[\\*\\]$S*|\\+$S)")
+private val COUNT_START = Regex("^$S*[0-9]+$S*[xX×*]")
 private val TRAILING_QTY = Regex("$S+[xX×*]$S*([0-9]{1,2})$S*$")
 private val DATE_OR_TIME = Regex("[0-9]{1,4}[-/.:][0-9]{1,2}[-/.:][0-9]{1,4}|[0-9]{1,2}:[0-9]{2}")
 private val QTY_IN_ROW = regex("(?:^|$S)(?:qty$S*)?([0-9]{1,2})$S*[xX×*@]")
@@ -335,17 +338,16 @@ private fun classify(row: String): Field? = when {
     else -> null
 }
 
-/** The item being described, built up from the rows before its amount. */
-private class Pending(
-    val name: String,
-    val sku: String,
-    var spec: String,
+/** One row of the item area, in print order. */
+private class ItemRow(
+    val text: String,
+    val label: String,
+    val price: Double?,
+    val right: Int,
     val left: Int,
-    val priced: Boolean,
-    cells: List<OcrLine>,
-) {
-    val lines = ArrayList(cells)
-}
+    val cells: List<OcrLine>,
+    val unitPriced: Boolean = false,
+)
 
 /** First plausible date in the text and what follows it; phone numbers fail the range check. */
 private fun findDate(text: String): Pair<String, String> {
@@ -429,27 +431,141 @@ private fun splitSku(text: String): Pair<String, String> {
     return if (HAS_NAME.containsMatchIn(rest)) match.groupValues[1] to rest else "" to text
 }
 
+private fun clean(text: String) = text.replace(ITEM_MARKER, "").replace(MODIFIER, "").trim()
+
+private fun isModifier(row: ItemRow) = MODIFIER.containsMatchIn(row.text)
+
+/** A quantity or stock number printed where an item begins. */
+private fun hasStart(text: String) = SKU_PREFIX.containsMatchIn(text) || LEADING_QTY.containsMatchIn(text)
+
+/** True when a priced row also carries a name, not only `1 x $3.00 = $3.00`. */
+private fun namedPrice(row: ItemRow) =
+    HAS_WORD.containsMatchIn(row.label.replace(COUNT_START, "")) && !MEASURE_START.containsMatchIn(row.label)
+
+/** One printer lays out items alike, so the whole receipt votes on where amounts sit. */
+private fun amountComesLast(entries: List<ItemRow?>): Boolean {
+    val rows = entries.filterNotNull()
+    val priced = rows.filter { it.price != null }
+    if (priced.isEmpty()) return false
+    val named = priced.filter(::namedPrice)
+    val after = rows.subList(rows.indexOfLast { it.price != null } + 1, rows.size)
+    val leftover = after.count { !isModifier(it) }
+    val firstRow = named.count { hasStart(it.label) }
+    val otherRow = rows.count { it.price == null && hasStart(it.text) }
+    return 2 * (priced.size - named.size + otherRow) > named.size + 2 * firstRow + leftover
+}
+
+private fun Receipt.addItem(text: String, price: Double, spec: String, cells: List<OcrLine>) {
+    val (sku, parsed) = splitSku(text)
+    var name = parsed
+    var qty = 1
+    val leading = LEADING_QTY.find(name)
+    val trailing = TRAILING_QTY.find(name)
+    if (leading != null) {
+        qty = leading.groupValues[1].toInt()
+        name = LEADING_QTY.replaceFirst(name, "").trim()
+    } else if (trailing != null) {
+        qty = trailing.groupValues[1].toInt()
+        name = TRAILING_QTY.replaceFirst(name, "").trim()
+    }
+    items.add(ReceiptItem(name, qty, price, sku, spec).also { it.lines = cells })
+}
+
+private fun Receipt.addDetail(row: ItemRow) {
+    val item = items.last()
+    item.spec = joinSpec(item.spec, clean(row.text))
+    item.lines = item.lines + row.cells
+}
+
+/** One item from the rows up to its amount: the first row starts it, the rest wrap or detail it. */
+private fun Receipt.addBlock(rows: List<ItemRow>, closing: ItemRow, anchored: Boolean, wrapRight: Double) {
+    var block = rows
+    val marked = block.indexOfLast { hasStart(clean(it.text)) }
+    // With no heading above the first item, its unit price or the row touching its amount shows it.
+    val start = when {
+        marked >= 0 -> marked
+        anchored -> 0
+        else -> block.indexOfFirst { it.unitPriced }.takeIf { it >= 0 } ?: max(block.size - 1, 0)
+    }
+    val lead = block.subList(0, start)
+    block = block.subList(start, block.size)
+    for (row in lead) if (items.isNotEmpty() && isModifier(row)) addDetail(row)
+    while (block.size > 1 && isModifier(block[0])) {
+        if (items.isNotEmpty()) addDetail(block[0])
+        block = block.subList(1, block.size)
+    }
+    val label = clean(closing.label)
+    if (block.isEmpty()) {
+        if (HAS_NAME.containsMatchIn(label)) addItem(label, closing.price!!, "", closing.cells)
+        return
+    }
+    var name = clean(block[0].text)
+    var used = 1
+    while (used < block.size && block[used - 1].right >= wrapRight && HAS_WORD.containsMatchIn(block[used].text)) {
+        val text = clean(block[used].text)
+        val gap = if (name.takeLast(1).all { it.code < 128 } && text.take(1).all { it.code < 128 }) " " else ""
+        name = "$name$gap$text"
+        used++
+    }
+    var spec = ""
+    for (row in block.subList(used, block.size)) spec = joinSpec(spec, clean(row.text))
+    val qty = QTY_IN_ROW.find(label)?.groupValues?.get(1)?.toInt() ?: 1
+    if (HAS_WORD.containsMatchIn(label) || qty > 1) spec = joinSpec(spec, label.trimEnd(' ', '='))
+    addItem(name, closing.price!!, spec, block.flatMap { it.cells } + closing.cells)
+    val item = items.removeAt(items.size - 1)
+    items.add(item.copy(qty = max(item.qty, qty)).also { it.lines = item.lines })
+}
+
+/** A row reaching this far right had no room left, so its text continues on the next row. */
+private fun wrapLimit(entries: List<ItemRow?>): Double {
+    val rows = entries.filterNotNull()
+    val priced = rows.filter { it.price != null }.map { it.right }
+    if (priced.isEmpty()) return Double.POSITIVE_INFINITY
+    val right = median(priced)
+    return right - (1 - WRAP_RATIO) * (right - rows.minOf { it.left })
+}
+
+/** Cuts the item area into one block per amount, then reads each block on its own. */
+private fun Receipt.splitBlocks(entries: List<ItemRow?>) {
+    val last = amountComesLast(entries)
+    val wrapRight = wrapLimit(entries)
+    var block = ArrayList<ItemRow>()
+    var anchored = false
+
+    fun flushDetails() {
+        for (row in block) if (items.isNotEmpty() && (!last || isModifier(row))) addDetail(row)
+    }
+
+    for (entry in entries) {
+        if (entry == null) {
+            // Rows held after an amount still describe that item; modifiers print after their amount.
+            flushDetails()
+            block = ArrayList()
+            anchored = true
+        } else if (entry.price == null) {
+            block.add(entry)
+        } else {
+            if (!last && namedPrice(entry)) {
+                flushDetails()
+                addItem(clean(entry.label), entry.price, "", entry.cells)
+            } else {
+                addBlock(block, entry, anchored, wrapRight)
+            }
+            block = ArrayList()
+            anchored = true
+        }
+    }
+    flushDetails()
+}
+
 fun parseReceipt(lines: List<OcrLine>): Receipt {
     val result = Receipt()
-    var pending: Pending? = null
-    var lastLeft: Int? = null
     var pendingField: Field? = null
     deskew(lines)
     val rows = groupRows(lines)
     val column = priceColumn(rows, lines)
-    val indent = if (lines.isEmpty()) 0.0 else median(lines.map { it.aligned[3] - it.aligned[1] })
-
-    /** A row belongs to the item above when indented under it or unlike a name. */
-    fun continues(text: String, left: Int): Boolean {
-        val held = pending ?: return false
-        return left > held.left + indent || !HAS_WORD.containsMatchIn(text) ||
-            MEASURE_START.containsMatchIn(text)
-    }
-
-    fun addItem(item: ReceiptItem, cells: List<OcrLine>) {
-        item.lines = cells
-        result.items.add(item)
-    }
+    // Item rows in print order; null marks a row that separates items, such as a heading.
+    val entries = ArrayList<ItemRow?>()
 
     for (entry in rows) {
         var row = entry.text
@@ -463,20 +579,20 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
         }
         pendingField = null
         if (PAYMENT.containsMatchIn(row)) {
-            pending = null
+            entries.add(null)
             continue
         }
         if (NOT_MONEY.containsMatchIn(row)) {
             // Anything priced above the shop header is a misread logo or address.
             if (SHOP_HEADER.containsMatchIn(row) && result.total == null && result.subtotal == null) {
-                result.items.clear()
+                entries.clear()
             }
-            pending = null
+            entries.add(null)
             continue
         }
         val field = classify(row)
         if (field != null) {
-            pending = null
+            entries.add(null)
             if (amount == null) {
                 pendingField = field
             } else {
@@ -486,79 +602,33 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
             continue
         }
         if (result.total != null || result.subtotal != null || SKIP.containsMatchIn(row)) {
-            pending = null
+            entries.add(null)
             continue
         }
         // Only the amount column prices an item; a unit price beside the name is description.
-        var priced = AT_PRICE.containsMatchIn(row)
-        if (priced) {
+        val unitPriced = AT_PRICE.containsMatchIn(row)
+        if (unitPriced) {
             row = row.replace(AT_PRICE, "")
             amount = null
         } else if (amount != null && column != null && entry.right < column) {
             row = label
             amount = null
-            priced = true
         }
         if (amount == null) {
-            val text = row.replace(ITEM_MARKER, "").trim()
-            if (!HAS_NAME.containsMatchIn(text)) continue
-            val held = pending
-            val (sku, name) = splitSku(text)
-            val last = result.items.lastOrNull()
-            val leftOfLast = lastLeft
-            // A row with its own price is an item, never a heading: what follows it describes it.
-            if (held != null && (continues(text, entry.left) || held.priced)) {
-                held.spec = joinSpec(held.spec, text)
-                held.lines.addAll(entry.cells)
-            } else if (held == null && sku.isEmpty() && last != null && leftOfLast != null &&
-                entry.left > leftOfLast + indent
-            ) {
-                // Amounts can print level with an item's first row, leaving its detail below.
-                last.spec = joinSpec(last.spec, text)
-                last.lines = last.lines + entry.cells
-            } else {
-                pending = Pending(name, sku, "", entry.left, priced, entry.cells)
+            if (HAS_NAME.containsMatchIn(clean(row))) {
+                entries.add(ItemRow(row, row, null, entry.right, entry.left, entry.cells, unitPriced))
             }
             continue
         }
         if (amount < 0) {
             result.discount = (result.discount ?: 0.0) + abs(amount)
             result.fieldLines.addAll(entry.cells)
-            pending = null
+            entries.add(null)
             continue
         }
-        val text = label.replace(ITEM_MARKER, "").trim()
-        val held = pending
-        if (held != null && continues(text, entry.left)) {
-            // The amount closes the item above; its row is a detail of that item.
-            val qty = QTY_IN_ROW.find(text)?.groupValues?.get(1)?.toInt() ?: 1
-            val spec = if (HAS_WORD.containsMatchIn(text) || qty > 1) {
-                joinSpec(held.spec, text.trimEnd(' ', '='))
-            } else {
-                held.spec
-            }
-            addItem(ReceiptItem(held.name, qty, amount, held.sku, spec), held.lines + entry.cells)
-            lastLeft = held.left
-            pending = null
-            continue
-        }
-        pending = null
-        if (!HAS_NAME.containsMatchIn(text)) continue
-        val (sku, parsed) = splitSku(text)
-        var name = parsed
-        var qty = 1
-        val leading = LEADING_QTY.find(name)
-        val trailing = TRAILING_QTY.find(name)
-        if (leading != null) {
-            qty = leading.groupValues[1].toInt()
-            name = LEADING_QTY.replaceFirst(name, "").trim()
-        } else if (trailing != null) {
-            qty = trailing.groupValues[1].toInt()
-            name = TRAILING_QTY.replaceFirst(name, "").trim()
-        }
-        addItem(ReceiptItem(name, qty, amount, sku), entry.cells)
-        lastLeft = entry.left
+        entries.add(ItemRow(row, label, amount, entry.right, entry.left, entry.cells))
     }
+    result.splitBlocks(entries)
     if (result.total == null) result.total = result.subtotal
     reconcile(result)
     readHeader(rows, result)

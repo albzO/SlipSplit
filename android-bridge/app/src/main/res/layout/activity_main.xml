@@ -100,12 +100,41 @@
                 android:text="@string/language_chinese" />
         </RadioGroup>
 
+        <CheckBox
+            android:id="@+id/flatten"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="@string/flatten" />
+
+        <RadioGroup
+            android:id="@+id/flattenModel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checkedButton="@+id/dewarpnet"
+            android:orientation="horizontal">
+            <RadioButton
+                android:id="@id/dewarpnet"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:textSize="14sp"
+                android:text="@string/flatten_dewarpnet" />
+            <RadioButton
+                android:id="@+id/uvdoc"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:textSize="14sp"
+                android:text="@string/flatten_uvdoc" />
+        </RadioGroup>
+
         <TextView
             android:id="@+id/status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="@string/status_idle"
+            android:visibility="gone"
             android:textColor="?android:textColorSecondary"
             android:textSize="14sp" />
 

@@ -6,6 +6,8 @@
         android:theme="@style/AppTheme"
         android:allowBackup="false"
         android:largeHeap="true">
+        <activity android:name=".PhotoReviewActivity" android:exported="false"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

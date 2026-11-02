@@ -25,9 +25,16 @@ fun saveRun(
     tier: String,
     language: ReceiptLanguage,
     elapsedMs: Long,
+    flattenMs: Long,
+    flattenBackend: String = "unknown",
+    original: Bitmap? = null,
+    levelled: Boolean = false,
+    corners: FloatArray? = null,
+    pointWidth: Int = 0,
+    pointHeight: Int = 0,
 ) {
     val root = context.getExternalFilesDir("runs") ?: return
-    val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+    val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
     val folder = File(root, stamp).apply { mkdirs() }
     val rawLines = JSONArray()
     for (line in lines) {
@@ -45,8 +52,19 @@ fun saveRun(
         .put("engine", tier)
         .put("language", language.name.lowercase())
         .put("infer_ms", elapsedMs)
+        .put("flatten_ms", flattenMs)
+        .put("flatten_backend", flattenBackend)
+        .put("levelled", levelled)
+        .put("point_width", pointWidth)
+        .put("point_height", pointHeight)
         .put("lines", rawLines)
+    corners?.let { run.put("corners", JSONArray(it.map(Float::toDouble))) }
     try {
+        original?.let { source ->
+            File(folder, "original.jpg").outputStream().use {
+                source.compress(Bitmap.CompressFormat.JPEG, PHOTO_QUALITY, it)
+            }
+        }
         File(folder, "photo.jpg").outputStream().use {
             photo.compress(Bitmap.CompressFormat.JPEG, PHOTO_QUALITY, it)
         }

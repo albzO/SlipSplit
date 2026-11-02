@@ -2,34 +2,28 @@ package local.ocrbridge
 
 import android.app.Activity
 import android.content.Intent
-import android.content.IntentSender
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.provider.MediaStore
 import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.core.content.FileProvider
-import androidx.exifinterface.media.ExifInterface
-import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
-import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
-import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import java.io.File
 import java.util.concurrent.Executors
-import kotlin.math.max
 import kotlin.math.roundToLong
 
 private const val REQUEST_CAMERA = 1
 private const val REQUEST_GALLERY = 2
-private const val REQUEST_SCAN = 3
+private const val REQUEST_REVIEW = 4
 private const val STATE_PHOTO = "photo"
-private const val MAX_SIDE = 2400
 private const val WHOLE_AMOUNT_FROM = 1000.0
 
 /** Takes or picks a receipt photo, recognizes it on the device and shows what it read. */
@@ -44,6 +38,8 @@ class MainActivity : Activity() {
     private lateinit var gallery: Button
     private lateinit var model: RadioGroup
     private lateinit var language: RadioGroup
+    private lateinit var flatten: CheckBox
+    private lateinit var flattenModel: RadioGroup
     private lateinit var status: TextView
     private lateinit var preview: BoxImageView
     private lateinit var result: View
@@ -63,6 +59,8 @@ class MainActivity : Activity() {
         gallery = findViewById(R.id.gallery)
         model = findViewById(R.id.model)
         language = findViewById(R.id.language)
+        flatten = findViewById(R.id.flatten)
+        flattenModel = findViewById(R.id.flattenModel)
         status = findViewById(R.id.status)
         preview = findViewById(R.id.preview)
         result = findViewById(R.id.result)
@@ -75,11 +73,13 @@ class MainActivity : Activity() {
         dropped = findViewById(R.id.dropped)
         raw = findViewById(R.id.raw)
         photoUri = savedInstanceState?.getString(STATE_PHOTO)?.let(Uri::parse)
-        camera.setOnClickListener { scanReceipt() }
+        camera.setOnClickListener { takePhoto() }
         gallery.setOnClickListener { pickPhoto() }
         findViewById<View>(R.id.rawToggle).setOnClickListener {
             raw.visibility = if (raw.visibility == View.VISIBLE) View.GONE else View.VISIBLE
         }
+        // Load native code while the user is still choosing/taking a picture.
+        worker.execute { DocumentBoundaryDetector.prepare() }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -88,30 +88,11 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        worker.execute {
+            loadedOcr?.close()
+        }
         worker.shutdown()
         super.onDestroy()
-    }
-
-    /** Finds and flattens the receipt with Google's scanner; the plain camera is the fallback. */
-    private fun scanReceipt() {
-        val options = GmsDocumentScannerOptions.Builder()
-            .setGalleryImportAllowed(false)
-            .setPageLimit(1)
-            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
-            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
-            .build()
-        GmsDocumentScanning.getClient(options).getStartScanIntent(this)
-            .addOnSuccessListener { sender ->
-                try {
-                    startIntentSenderForResult(sender, REQUEST_SCAN, null, 0, 0, 0)
-                } catch (_: IntentSender.SendIntentException) {
-                    takePhoto()
-                }
-            }
-            .addOnFailureListener {
-                status.text = getString(R.string.status_no_scanner)
-                takePhoto()
-            }
     }
 
     private fun takePhoto() {
@@ -133,14 +114,39 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_REVIEW) {
+            if (resultCode == RESULT_FIRST_USER) {
+                when (data?.getStringExtra(PhotoReviewActivity.ACTION)) {
+                    PhotoReviewActivity.RETAKE -> takePhoto()
+                    PhotoReviewActivity.PICK -> pickPhoto()
+                }
+            } else if (resultCode == RESULT_OK) {
+                data?.let(::recognize)
+            }
+            return
+        }
         if (resultCode != RESULT_OK) return
         val uri = when (requestCode) {
             REQUEST_CAMERA -> photoUri
-            REQUEST_SCAN -> GmsDocumentScanningResult.fromActivityResultIntent(data)
-                ?.pages?.firstOrNull()?.imageUri
-            else -> data?.data
+            REQUEST_GALLERY -> data?.data
+            else -> null
         }
-        uri?.let(::recognize)
+        uri?.let(::reviewPhoto)
+    }
+
+    private fun reviewPhoto(uri: Uri) {
+        val backend = if (!flatten.isChecked) "none"
+            else when (flattenModel.checkedRadioButtonId) {
+                R.id.uvdoc -> "uvdoc"
+                else -> "dewarpnet"
+            }
+        // Release the last OCR session before the review screen loads its dewarping model.
+        worker.execute {
+            loadedOcr?.close(); loadedOcr = null; loadedTier = null
+        }
+        startActivityForResult(Intent(this, PhotoReviewActivity::class.java).setData(uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .putExtra(PhotoReviewActivity.BACKEND, backend), REQUEST_REVIEW)
     }
 
     private fun selectedTier() = when (model.checkedRadioButtonId) {
@@ -158,30 +164,58 @@ class MainActivity : Activity() {
     private fun setBusy(busy: Boolean) {
         camera.isEnabled = !busy
         gallery.isEnabled = !busy
-        for (group in listOf(model, language)) {
+        flatten.isEnabled = !busy
+        for (group in listOf(model, language, flattenModel)) {
             for (index in 0 until group.childCount) group.getChildAt(index).isEnabled = !busy
         }
     }
 
-    private fun recognize(uri: Uri) {
+    private fun recognize(approved: Intent) {
         val tier = selectedTier()
         val receiptLanguage = selectedLanguage()
+        val backend = approved.getStringExtra(PhotoReviewActivity.BACKEND) ?: "none"
+        val flattenMs = approved.getLongExtra(PhotoReviewActivity.FLATTEN_MS, 0)
+        val originalUri = approved.getStringExtra(PhotoReviewActivity.ORIGINAL)?.let(Uri::parse)
+        flatten.isChecked = backend != "none"
+        flattenModel.check(when (backend) {
+            "uvdoc" -> R.id.uvdoc
+            else -> R.id.dewarpnet
+        })
         setBusy(true)
         result.visibility = View.GONE
         status.text = getString(R.string.status_reading)
+        status.visibility = View.VISIBLE
+        val inMemory = ApprovedPhotoHandoff.take(approved.getStringExtra(ApprovedPhotoHandoff.TOKEN))
+        inMemory?.let { preview.show(it, emptyList()) }
         worker.execute {
             try {
-                val bitmap = loadUpright(uri)
-                main.post { preview.show(bitmap, emptyList()) }
+                // Review already applied both corrections. OCR must use those exact pixels.
+                val bitmap = inMemory ?: ApprovedPhotoHandoff.restore(this, approved)
+                main.post { if (!isDestroyed) preview.show(bitmap, emptyList()) }
                 val ocr = ocrFor(tier)
                 val start = System.nanoTime()
-                val lines = ocr.recognize(bitmap, receiptLanguage)
+                val read = readLevelled(ocr, bitmap, receiptLanguage)
                 val elapsed = (System.nanoTime() - start) / 1_000_000
-                val receipt = parseReceipt(lines)
-                saveRun(this, bitmap, lines, tier, receiptLanguage, elapsed)
-                main.post { showResult(bitmap, lines, receipt, elapsed) }
+                val lines = read.lines
+                val photo = read.photo
+                val receipt = read.receipt
+                main.post { if (!isDestroyed) showResult(photo, lines, receipt, elapsed, flattenMs) }
+                // Diagnostic persistence must not delay recognition or its visible result.
+                try {
+                    val original = originalUri?.let { loadReceiptPhoto(this, it) }
+                    try {
+                        saveRun(this, photo, lines, tier, receiptLanguage, elapsed, flattenMs, backend, original,
+                            read.levelled, approved.getFloatArrayExtra(ApprovedPhotoHandoff.CORNERS),
+                            approved.getIntExtra(ApprovedPhotoHandoff.POINT_WIDTH, 0),
+                            approved.getIntExtra(ApprovedPhotoHandoff.POINT_HEIGHT, 0))
+                    } finally {
+                        original?.recycle()
+                    }
+                } catch (error: Throwable) {
+                    Log.w("RunLog", "could not save diagnostic images", error)
+                }
             } catch (error: Throwable) {
-                main.post { showError(error) }
+                main.post { if (!isDestroyed) showError(error) }
             }
         }
     }
@@ -195,28 +229,6 @@ class MainActivity : Activity() {
             loadedOcr = it
             loadedTier = tier
         }
-    }
-
-    /** Decodes the photo at most MAX_SIDE long and applies its EXIF rotation. */
-    private fun loadUpright(uri: Uri): Bitmap {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it, null, bounds) }
-        var sample = 1
-        while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_SIDE) sample *= 2
-        val options = BitmapFactory.Options().apply { inSampleSize = sample }
-        val decoded = contentResolver.openInputStream(uri)
-            .use { BitmapFactory.decodeStream(it, null, options) }
-            ?: error("not an image")
-        val rotation = contentResolver.openInputStream(uri)
-            ?.use { ExifInterface(it).rotationDegrees }
-            ?: 0
-        val scale = minOf(1f, MAX_SIDE.toFloat() / max(decoded.width, decoded.height))
-        if (rotation == 0 && scale == 1f) return decoded
-        val matrix = android.graphics.Matrix().apply {
-            postScale(scale, scale)
-            postRotate(rotation.toFloat())
-        }
-        return Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
     }
 
     private fun money(value: Double): String {
@@ -268,10 +280,16 @@ class MainActivity : Activity() {
         return palette[index % palette.size]
     }
 
-    private fun showResult(bitmap: Bitmap, lines: List<OcrLine>, receipt: Receipt, elapsed: Long) {
+    private fun showResult(
+        bitmap: Bitmap,
+        lines: List<OcrLine>,
+        receipt: Receipt,
+        elapsed: Long,
+        flattenMs: Long,
+    ) {
         setBusy(false)
         preview.show(bitmap, colorBoxes(lines, receipt))
-        status.text = getString(R.string.status_done, elapsed / 1000.0, lines.size)
+        status.text = getString(R.string.status_done, flattenMs / 1000.0, elapsed / 1000.0, lines.size)
         showIfSet(company, receipt.company)
         showIfSet(printedAt, listOf(receipt.date, receipt.time).filter { it.isNotEmpty() }.joinToString(" "))
         val matches = sumMatches(receipt)
@@ -306,6 +324,7 @@ class MainActivity : Activity() {
 
     private fun showError(error: Throwable) {
         setBusy(false)
+        status.visibility = View.VISIBLE
         status.text = getString(R.string.status_error, error.message ?: error.toString())
     }
 }

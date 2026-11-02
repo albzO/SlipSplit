@@ -21,9 +21,11 @@ FIT_ROUNDS = 3
 FIT_OUTLIER_RATIO = 3
 FIT_MIN_GAIN = 0.7
 MIN_LONG_LINES = 3
+WRAP_RATIO = 0.75
 AMOUNT = r"-?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d{1,2})?"
 TRAILING_AMOUNT = re.compile(rf"(?:^|[\s:：xX×*@$¥￥€£]|Rp|RM)({AMOUNT})\s*(?:[-元#*^]|\b[A-Z]\b)?\s*$", re.I)
-LEADING_QTY = re.compile(r"^\s*(\d{1,2})\s*[xX×*]?\s+(?=\S)")
+LEADING_QTY = re.compile(r"^\s*(\d{1,2})(?:\s*[xX×*]\s*|\s+)(?=\S)")
+MODIFIER = re.compile(r"^\s*(?:-+\s|\[\*\]\s*|\+\s)")
 TRAILING_QTY = re.compile(r"\s+[xX×*]\s*(\d{1,2})\s*$")
 DATE_OR_TIME = re.compile(r"\d{1,4}[-/.:]\d{1,2}[-/.:]\d{1,4}|\d{1,2}:\d{2}")
 QTY_IN_ROW = re.compile(r"(?:^|\s)(?:qty\s*)?(\d{1,2})\s*[xX×*@]", re.I)
@@ -313,27 +315,167 @@ def split_sku(text):
     return "", text
 
 
-def parse_lines(lines):
+def clean(text):
+    return MODIFIER.sub("", ITEM_MARKER.sub("", text)).strip()
+
+
+def has_start(text):
+    """A quantity or stock number printed where an item begins."""
+    return bool(SKU_PREFIX.match(text) or LEADING_QTY.match(text))
+
+
+def named_price(entry):
+    """True when a priced row also carries a name, not only `1 x $3.00 = $3.00`."""
+    label = entry["label"]
+    return bool(HAS_WORD.search(re.sub(r"^\s*\d+\s*[xX×*]", "", label))) and not MEASURE_START.match(label)
+
+
+def layout_votes(entries):
+    """Evidence for amounts on an item's last row against its first, from the whole receipt."""
+    rows = [entry for entry in entries if entry]
+    priced = [entry for entry in rows if entry["price"] is not None]
+    if not priced:
+        return 0, 0
+    named = [entry for entry in priced if named_price(entry)]
+    after = rows[rows.index(priced[-1]) + 1:]
+    leftover = sum(not MODIFIER.match(entry["text"]) for entry in after)
+    first_row = sum(has_start(entry["label"]) for entry in named)
+    other_row = sum(has_start(entry["text"]) for entry in rows if entry["price"] is None)
+    return 2 * (len(priced) - len(named) + other_row), len(named) + 2 * first_row + leftover
+
+
+def amount_comes_last(entries):
+    """One printer lays out items alike, so the whole receipt votes on where amounts sit."""
+    last, first = layout_votes(entries)
+    return last > first
+
+
+def add_item(result, text, price, sku_spec=""):
+    sku, name = split_sku(text)
+    qty = 1
+    match = LEADING_QTY.match(name) or TRAILING_QTY.search(name)
+    if match:
+        qty = int(match.group(1))
+        name = (LEADING_QTY.sub("", name) if LEADING_QTY.match(name)
+                else TRAILING_QTY.sub("", name)).strip()
+    result["items"].append({"name": name, "qty": qty, "price": price, "sku": sku, "spec": sku_spec})
+
+
+def add_detail(result, entry):
+    result["items"][-1]["spec"] = join_spec(result["items"][-1]["spec"], clean(entry["text"]))
+    mark(result, entry, "detail")
+
+
+def mark(result, entry, role):
+    """Records what a row became, for tools/block_view.py."""
+    entry["role"] = role
+    entry["item"] = len(result["items"]) - 1
+
+
+def join_wrapped(block, wrap_right):
+    """Takes the name from the first row and any rows it ran over into; the rest is detail."""
+    name = clean(block[0]["text"])
+    used = 1
+    block[0]["role"] = "name"
+    while (used < len(block) and block[used - 1]["right"] >= wrap_right
+            and HAS_WORD.search(block[used]["text"])):
+        text = clean(block[used]["text"])
+        gap = " " if name[-1:].isascii() and text[:1].isascii() else ""
+        name = f"{name}{gap}{text}"
+        block[used]["role"] = "name"
+        used += 1
+    return name, block[used:]
+
+
+def add_block(result, block, closing, anchored, wrap_right):
+    """One item from the rows up to its amount: the first row starts it, the rest wrap or detail it."""
+    starts = [index for index, entry in enumerate(block) if has_start(clean(entry["text"]))]
+    if starts:
+        lead, block = block[:starts[-1]], block[starts[-1]:]
+    elif not anchored:
+        # With no heading above the first item, only the row touching its amount is known to be it.
+        lead, block = block[:-1], block[-1:]
+    else:
+        lead = []
+    for entry in lead:
+        if result["items"] and MODIFIER.match(entry["text"]):
+            add_detail(result, entry)
+    while len(block) > 1 and MODIFIER.match(block[0]["text"]):
+        if result["items"]:
+            add_detail(result, block[0])
+        block = block[1:]
+    label = clean(closing["label"])
+    if not block:
+        if HAS_NAME.search(label):
+            add_item(result, label, closing["price"])
+            mark(result, closing, "both")
+        return
+    name, details = join_wrapped(block, wrap_right)
+    spec = ""
+    for entry in details:
+        spec = join_spec(spec, clean(entry["text"]))
+    count = QTY_IN_ROW.search(label)
+    qty = int(count.group(1)) if count else 1
+    if HAS_WORD.search(label) or qty > 1:
+        spec = join_spec(spec, label.rstrip(" ="))
+    add_item(result, name, closing["price"], spec)
+    result["items"][-1]["qty"] = max(result["items"][-1]["qty"], qty)
+    mark(result, closing, "amount")
+    for entry in block:
+        mark(result, entry, entry.get("role", "detail"))
+
+
+def wrap_limit(entries):
+    """A row reaching this far right had no room left, so its text continues on the next row."""
+    rows = [entry for entry in entries if entry]
+    priced = [entry["right"] for entry in rows if entry["price"] is not None]
+    if not priced:
+        return math.inf
+    right = median(priced)
+    left = min(entry["left"] for entry in rows)
+    return right - (1 - WRAP_RATIO) * (right - left)
+
+
+def split_blocks(result, entries):
+    """Cuts the item area into one block per amount, then reads each block on its own."""
+    last = amount_comes_last(entries)
+    wrap_right = wrap_limit(entries)
+    block = []
+    anchored = False
+
+    def flush_details():
+        for entry in block:
+            if result["items"] and (not last or MODIFIER.match(entry["text"])):
+                add_detail(result, entry)
+
+    for entry in entries:
+        if entry is None:
+            # Rows held after an amount still describe that item; modifiers print after their amount.
+            flush_details()
+            block = []
+            anchored = True
+        elif entry["price"] is None:
+            block.append(entry)
+        else:
+            if not last and named_price(entry):
+                flush_details()
+                add_item(result, clean(entry["label"]), entry["price"])
+                mark(result, entry, "both")
+            else:
+                add_block(result, block, entry, anchored, wrap_right)
+            block = []
+            anchored = True
+    flush_details()
+
+
+def parse_lines(lines, trace=None):
     result = empty()
     lines = deskew(lines)
     rows = group_rows(lines)
     column = price_column(rows, lines)
-    # The item being described: name, sku, spec, where its name row starts, and if it shows a price.
-    pending = None
-    last_left = None
-    boxes = [line["box"] for line in lines if line.get("box")]
-    indent = median(box[3] - box[1] for box in boxes) if boxes else None
-
-    def continues(text, left):
-        """A row belongs to the item above when indented under it or unlike a name."""
-        if not pending:
-            return False
-        indented = left is not None and pending["left"] is not None and left > pending["left"] + indent
-        return indented or not HAS_WORD.search(text) or bool(MEASURE_START.match(text))
+    # Item rows in print order; None marks a row that separates items, such as a heading.
+    entries = []
     pending_field = None
-
-    def add_item(name, qty, price, sku="", spec=""):
-        result["items"].append({"name": name, "qty": qty, "price": price, "sku": sku, "spec": spec})
 
     for row, right, cells in rows:
         left = cells[0]["box"][0] if cells[0].get("box") else None
@@ -345,14 +487,14 @@ def parse_lines(lines):
             continue
         pending_field = None
         if PAYMENT.search(row):
-            pending = None
+            entries.append(None)
             continue
         field = None
         if NOT_MONEY.search(row):
             # Anything priced above the shop header is a misread logo or address.
             if SHOP_HEADER.search(row) and result["total"] is None and result["subtotal"] is None:
-                result["items"].clear()
-            pending = None
+                entries.clear()
+            entries.append(None)
             continue
         if TOTAL_WITH_GST.search(row):
             field = "total"
@@ -369,67 +511,36 @@ def parse_lines(lines):
         elif TAX.search(row):
             field = "tax"
         if field:
-            pending = None
+            entries.append(None)
             if amount is None:
                 pending_field = field
             elif result[field] is None:
                 result[field] = abs(amount)
             continue
         if result["total"] is not None or result["subtotal"] is not None or SKIP.search(row):
-            pending = None
+            entries.append(None)
             continue
         # Only the amount column prices an item; a unit price beside the name is description.
-        priced = bool(AT_PRICE.search(row))
-        if priced:
+        if AT_PRICE.search(row):
             row = AT_PRICE.sub("", row)
             amount = None
         elif amount is not None and column is not None and right < column:
             row = label
             amount = None
-            priced = True
         if amount is None:
-            text = ITEM_MARKER.sub("", row).strip()
-            if not HAS_NAME.search(text):
-                continue
-            sku, name = split_sku(text)
-            # A row with its own price is an item, never a heading: what follows it describes it.
-            if continues(text, left) or (pending and pending["priced"]):
-                pending["spec"] = join_spec(pending["spec"], text)
-            elif (not pending and not sku and result["items"] and left is not None
-                    and last_left is not None and left > last_left + indent):
-                # Amounts can print level with an item's first row, leaving its detail below.
-                result["items"][-1]["spec"] = join_spec(result["items"][-1]["spec"], text)
-            else:
-                pending = {"name": name, "sku": sku, "spec": "", "left": left, "priced": priced}
+            if HAS_NAME.search(clean(row)):
+                entries.append({"text": row, "label": row, "price": None, "right": right, "left": left,
+                                "cells": cells})
             continue
         if amount < 0:
             result["discount"] = (result["discount"] or 0) + abs(amount)
-            pending = None
+            entries.append(None)
             continue
-        text = ITEM_MARKER.sub("", label).strip()
-        if continues(text, left):
-            # The amount closes the item above; its row is a detail of that item.
-            count = QTY_IN_ROW.search(text)
-            qty = int(count.group(1)) if count else 1
-            spec = pending["spec"]
-            if HAS_WORD.search(text) or qty > 1:
-                spec = join_spec(spec, text.rstrip(" ="))
-            add_item(pending["name"], qty, amount, pending["sku"], spec)
-            last_left = pending["left"]
-            pending = None
-            continue
-        pending = None
-        if not HAS_NAME.search(text):
-            continue
-        sku, name = split_sku(text)
-        qty = 1
-        match = LEADING_QTY.match(name) or TRAILING_QTY.search(name)
-        if match:
-            qty = int(match.group(1))
-            name = (LEADING_QTY.sub("", name) if LEADING_QTY.match(name)
-                    else TRAILING_QTY.sub("", name)).strip()
-        add_item(name, qty, amount, sku)
-        last_left = left
+        entries.append({"text": row, "label": label, "price": amount, "right": right, "left": left,
+                        "cells": cells})
+    split_blocks(result, entries)
+    if trace is not None:
+        trace.extend(entries)
     if result["total"] is None:
         result["total"] = result["subtotal"]
     reconcile(result)
