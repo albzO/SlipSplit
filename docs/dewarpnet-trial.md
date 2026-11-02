@@ -16,7 +16,7 @@
 - 输入是 256×256 BGR；输出为 128×128 XY 反向映射。先做 3×3 均值平滑，再放大映射并双线性采样原图。
 - 矫正保持原图尺寸；OCR 在矫正后的图片上运行。每次释放矫正模型后再加载 OCR，避免同时保留两个大模型。
 - `runs/` 保存 `original.jpg`、`photo.jpg`、`ocr.json`，后者含 `flatten_backend` 和 `flatten_ms`。
-- 模型文件被 Git 忽略，重新获取：`python tools/fetch_dewarpnet.py`。下载固定版本并验证 SHA256。
+- 模型文件被 Git 忽略，重新获取：从固定版本下载 `dewarp.tflite` 并核对 SHA256，见 `assets/dewarpnet/README.txt`。
 
 模型来源：https://huggingface.co/litert-community/DewarpNet-LiteRT
 

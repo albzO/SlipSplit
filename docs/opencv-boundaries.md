@@ -22,7 +22,7 @@ Windows 上独立安装的 Python，以及本项目电脑端 OCR 工具的 Pytho
 
 ## 截图诊断重放
 
-`tools/debug_document_edges.py` 在电脑端使用两张用户截图近似恢复照片区域：
+提交 `442abde` 中的 `tools/debug_document_edges.py` 在电脑端使用两张用户截图近似恢复照片区域：
 裁掉界面，按已知遮罩透明度补偿亮度，并对四角圆点和青色线做局部修补。
 这些是派生诊断图，受 JPEG 压缩、遮罩和修补影响，不能替代原图或 Android 真机验证。
 

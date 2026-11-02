@@ -1,17 +1,4 @@
 {
   "version": "0.0.1",
-  "configurations": [
-    {
-      "name": "ocr-compare",
-      "runtimeExecutable": "C:\\Project\\OCR\\.venv\\Scripts\\python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "main:app", "--app-dir", "app", "--port", "8700"],
-      "port": 8700
-    },
-    {
-      "name": "block-view",
-      "runtimeExecutable": "C:\\Project\\OCR\\.venv\\Scripts\\python.exe",
-      "runtimeArgs": ["-m", "http.server", "8710", "--bind", "127.0.0.1", "--directory", "logs/block-view"],
-      "port": 8710
-    }
-  ]
+  "configurations": []
 }

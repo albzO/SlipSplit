@@ -5,7 +5,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Replays OCR output from the sample receipts against what app/receipt.py parsed from it. */
+/** Replays OCR output from the sample receipts against the results recorded for them. */
 class ReceiptParserTest {
     private fun JSONObject.amount(key: String): Double? = if (isNull(key)) null else getDouble(key)
 

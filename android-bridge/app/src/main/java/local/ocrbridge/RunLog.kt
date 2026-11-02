@@ -16,7 +16,7 @@ private const val PHOTO_QUALITY = 92
 
 /**
  * Keeps each photo with its raw OCR output in the app's external files folder, where
- * tools/pull_runs.py collects them to test post-processing without running the model again.
+ * they can be pulled with adb to test post-processing without running the model again.
  */
 fun saveRun(
     context: Context,

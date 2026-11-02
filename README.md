@@ -1,113 +1,85 @@
-# 小票 OCR 对比
+# 小票 OCR
 
-为安卓分账 App 选 OCR 方案：同一批小票、同一套解析规则，横向比较 6 个模型。
+安卓分账 App 的离线小票识别，代码全部在 `android-bridge/`，语言是 Kotlin。
 
-## 启动
-
-```bash
-.venv/Scripts/python -m uvicorn main:app --app-dir app --port 8700
-```
-
-打开 http://localhost:8700 。支持上传自己的小票；模型下载到 `models/`，不占用户目录。
-
-批量跑分（服务需已启动）：
-
-```bash
-python benchmark.py ppocr_tiny,ppocr_small 8
-```
-
-## 结构
-
-| 路径 | 作用 |
-| --- | --- |
-| `app/main.py` | FastAPI 接口 |
-| `app/engines.py` | 模型注册表和 worker 进程管理 |
-| `app/receipt.py` | 统一小票结构、规则解析、评分 |
-| `workers/` | 模型推理，Paddle 和 torch 分属两个 venv |
-| `static/index.html` | 前端 |
-| `samples/` | 样本、`ground_truth.json` 标注、`sources.json` 来源和授权 |
-| `android-bridge/` | 安卓 App：拍照或选图，在端上识别并显示结果 |
-
-## 安卓 App
+## 运行
 
 用 Android Studio 打开 `android-bridge/`，选好设备后点 Run。App 独立运行，不需要电脑或网络。
 
-拍照或从相册选择后，u2netp 分割出小票并求四角，失败时退回 OpenCV 找边；可手动微调或重新找边。
-都没有找到时保留整张照片。模型在 `assets/u2netp/`，被 Git 忽略，来源和 SHA256 见同目录 `README.txt`。确认四角后做梯形矫正，再运行所选的曲面矫正模型。
-拖动四角时显示避开手指的放大镜。预览先显示梯形矫正图，再执行曲面矫正。
-预览页可双指放大，切换 DewarpNet / UVDoc、关闭曲面矫正或返回调整四角；不满意可以重选、重拍。
-确认“使用这张并识别”后才回主界面运行 OCR，不会再次矫正图片。相册仍通过系统选择器授权单张照片，
-不需要读取整个相册。该流程不依赖 Google 文档扫描器。
-确认时直接在内存中交接已矫正图片，不额外保存临时 PNG 再读取；识别结果显示后才后台保存诊断记录。
+命令行需要先把 `JAVA_HOME` 指向 JDK 21：
 
-安卓端不再嵌入 Python，也不需要 Python 3.10 打包。自动找边使用 `org.opencv:opencv:4.12.0`，
-离线运行，当前支持 arm64-v8a / x86_64。流程说明见 [docs/photo-review.md](docs/photo-review.md)。
-
-- `PpOcr.kt`：ONNX Runtime 上的 PP-OCRv6 检测和识别。
-- `Language.kt`：自动 / 英文 / 中文。英文模式在解码时只允许英文字符；自动模式在中日韩字符占比低于 15% 时按英文处理。
-- `ReceiptParser.kt`：解析规则的主版本，先按金额切成菜品块，再细分每块内的菜名、规格和金额。
-  新规则先写这里。`app/src/test/resources/receipts.json` 是样本上的历史 Python 输出，`ReceiptParserTest` 用它防止退步。
-- `TextLevel.kt`：用 OCR 框拟合行斜率场。行弯曲或倾斜明显时校平图片并重读一次。
-
-## 测试后处理
-
-OCR 结果存盘后，改规则不用再跑模型：
-
-```bash
-python tools/dump_ocr.py ppocr_small
-python tools/evaluate.py ppocr_small
+```powershell
+cd android-bridge
+./gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
-`evaluate.py` 逐张列出漏掉和多出的菜品；`--save` 记录基线，下次运行时显示哪些小票变了；
-`--fixture` 刷新 Kotlin 对照测试。改 `app/receipt.py` 后记得同步 `ReceiptParser.kt`，再用 `--fixture` 更新。
+## 流程
 
-App 每次识别都会保存照片和 OCR 原始结果。用 `python tools/pull_runs.py <adb 序列号>` 拉回电脑，
-它们会进入 `samples/run_*.jpg` 和 `ocr_cache/app/`，用 `python tools/evaluate.py app` 评估。
+1. 拍照或从相册选择。
+2. u2netp 分割出小票并求四角，失败时退回 OpenCV 找边；可手动微调或重新找边，都没有找到时保留整张照片。
+3. 梯形矫正，再用所选的 DewarpNet 或 UVDoc 做曲面矫正。预览页可切换模型、关闭曲面矫正或返回调整四角。
+4. 确认后运行 PP-OCRv6。行弯曲或倾斜明显时校平图片并重读一次。
+5. 解析：先按金额把菜品区切成块，再细分每块内的菜名、规格和金额。
 
-规则还会读取店名（优先带 `LIMITED`、`SDN BHD` 等后缀的行，否则取抬头最大的字）和小票上印的日期时间。
+流程细节见 [docs/photo-review.md](docs/photo-review.md)。
 
-## 指标
+## 代码
 
-- **总额正确率**：解析出的总额与标注相差不超过 0.5%。
-- **菜品 F1**：名称相似度 ≥ 0.6 且金额一致才算匹配。
-- **求和对得上**：不需要标注，菜品之和能对上小计或总额。
+| 文件 | 作用 |
+| --- | --- |
+| `PaperBoundary.kt` | u2netp 分割和四角求解 |
+| `DocumentBoundaryDetector.kt` | OpenCV 找边，作为备选 |
+| `Perspective.kt` | 梯形矫正 |
+| `Dewarper.kt`、`DewarpNet.kt`、`BackwardMap.kt` | 曲面矫正 |
+| `PpOcr.kt` | ONNX Runtime 上的 PP-OCRv6 检测和识别 |
+| `Language.kt` | 自动 / 英文 / 中文；自动模式在中日韩字符占比低于 15% 时按英文处理 |
+| `TextLevel.kt` | 用 OCR 框拟合行斜率场并校平 |
+| `ReceiptParser.kt` | 解析规则，读取菜品、合计、店名和日期 |
+| `RunLog.kt` | 保存每次识别的照片、OCR 结果、四角和校平信息 |
 
-## 对比结果（2026-11-01，23 张小票，Ryzen 7 7800X3D，CPU 8 线程）
+## 模型
 
-| 模型 | 平均耗时 | 权重体积 | 总额正确 | 菜品 F1（15 张） | 求和对得上 |
-| --- | --- | --- | --- | --- | --- |
-| PP-OCRv6 Small | 4.4 s | 32 MB | 20/23 | 0.58 | 8/23 |
-| PP-OCRv6 Tiny | 1.6 s | 7 MB | 14/23 | 0.49 | 6/23 |
-| Donut-CORD | 7.0 s | 806 MB | 13/23 | 0.60 | 8/23 |
-| PP-OCR + LayoutLMv3 | 4.6 s | 504 MB + OCR | 11/23 | 0.42 | 8/23 |
-| PaddleOCR-VL 1.6 | 约 13 分钟 | 1917 MB | 只测了 1 张 | 14/14 菜品 | — |
-| Google ML Kit v2（拉丁文） | 0.13 s（手机） | — | 10/23 | 0.40 | 4/23 |
+模型文件被 Git 忽略，放在 `android-bridge/app/src/main/assets/`：
 
-Paddle 关闭了 oneDNN（3.3 版有兼容问题），电脑耗时偏保守。PP-OCRv6 默认模型读不出韩文。
+| 目录 | 文件 | 来源 |
+| --- | --- | --- |
+| `u2netp/` | `u2netp.onnx` | 见该目录 `README.txt` |
+| `dewarpnet/` | `dewarp.tflite` | 见该目录 `README.txt` |
+| `ppocr/` | PP-OCRv6 和 UVDoc 的 ONNX | 仓库里没有下载说明，换机器时要从现有设备或项目副本复制 |
 
-安卓端 PP-OCRv6（ONNX Runtime，4 线程，x86_64 模拟器，耗时不代表真机）：
+下载后核对各目录 `README.txt` 里的 SHA256。
 
-| 模型 | 平均耗时 | 中位耗时 | 总额正确 | 菜品 F1（15 张） | 求和对得上 |
-| --- | --- | --- | --- | --- | --- |
-| Small（安卓） | 2.7 s | 1.6 s | 20/23 | 0.72 | 8/23 |
-| Tiny（安卓） | 1.5 s | 0.6 s | 14/23 | 0.52 | 7/23 |
+## 测试
 
-ML Kit 只测了拉丁文识别器，读不了样本里的 8 张中日韩小票。只看其余 15 张拉丁文小票：
-PP-OCRv6 Small 总额 15/15，ML Kit 10/15。ML Kit 耗时来自 25098PN5AC 真机，其他模型是电脑 CPU，不能直接比较。
-App 已不再包含 ML Kit；这组历史文字识别结果保留在 `bench_mlkit.csv` 和 `bench_android.csv` 作记录。
+```powershell
+cd android-bridge
+./gradlew.bat :app:testDebugUnitTest
+```
 
-上面的分数早于金额列切分等规则改动。最新规则下 PP-OCRv6 三档在 24 张样本上的结果（电脑 CPU，见 `bench_tiers.csv`）：
+`ReceiptParserTest` 用 `app/src/test/resources/receipts.json` 防止解析退步。该文件含样本 OCR 结果，被 Git 忽略，只存在本机；
+它是移除 Python 前生成的，解析规则有意改变时需要手动更新。
 
-| 模型 | 平均耗时 | 权重体积 | 总额正确 | 菜品 F1（16 张） | 求和对得上 |
-| --- | --- | --- | --- | --- | --- |
-| Tiny | 1.7 s | 7 MB | 15/24 | 0.54 | 9/24 |
-| Small | 4.5 s | 32 MB | 21/24 | 0.66 | 12/24 |
-| Medium | 16.7 s | 139 MB | 21/24 | 0.70 | 13/24 |
+手机全流程测试会比较两种找边，并跑完矫正、OCR 和解析：
 
-Medium 在 x86_64 模拟器的 App 里占用约 765 MB 内存（PSS）。
+```powershell
+./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest -PsmokeRunner=local.ocrbridge.BoundarySmoke
+adb -s <serial> install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s <serial> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s <serial> shell am instrument -w local.ocrbridge.test/local.ocrbridge.BoundarySmoke
+```
+
+结果在 App 外部文件目录的 `boundary/`。拉回识别记录：
+
+```bash
+adb -s <serial> pull /sdcard/Android/data/local.ocrbridge/files/runs samples/runs
+```
+
+## 历史
+
+桌面 Python 比较台已移除，需要时可从提交 `442abde` 恢复。`bench_*.csv` 保留了当时的跑分。
+选型结论：PP-OCRv6 Small 的准确率和体积最均衡，Medium 准确率略高但占用内存多，ML Kit 拉丁文识别器读不了中日韩小票。
 
 ## 样本
 
-- `cord_*`：印尼，CORD 数据集自带标注。
-- `my_ jp_ kr_ cn_ au_`：其他地区，人工看图标注总额，部分标注菜品。
-- 部分样本授权为 CC BY-NC，仅用于本地测试，不要随 App 分发。
+- `samples/` 含私人小票和 CC BY-NC 授权的样本，被 Git 忽略，不要随 App 分发。
+- 来源和授权见 `samples/sources.json`。

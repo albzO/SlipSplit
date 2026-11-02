@@ -1,7 +1,7 @@
 # 文本行曲面矫正实验
 
-自写的无模型曲面矫正原型，和不矫正、UVDoc 对比。代码在 `tools/curve_rows.py`，对比脚本在
-`tools/compare_curve.py`，尚未移植到 App，也没有进入 `app/receipt.py`。
+自写的无模型曲面矫正，和不矫正、UVDoc 对比。下面的电脑端数据来自 Python 原型，脚本已移除，
+可从提交 `442abde` 恢复；现行实现是 `TextLevel.kt`。
 
 ## 做法
 
@@ -58,7 +58,7 @@ OCR 输入尺寸不变，但 `warp` 比 `rows` 多一次 OCR。
 
 ## UVDoc 后接文本行校平
 
-先跑 UVDoc，再用它的 OCR 框拟合斜率场并重采样，然后再跑一次 OCR。`tools/compare_cascade.py` 对比这条流程和单独 UVDoc。
+先跑 UVDoc，再用它的 OCR 框拟合斜率场并重采样，然后再跑一次 OCR。下表对比这条流程和单独 UVDoc。
 
 | 数据 | 方法 | 总额正确 | 求和对得上 | 菜品 F1 | 行倾斜中位 / p90 |
 | --- | --- | --- | --- | --- | --- |
@@ -78,21 +78,10 @@ OCR 输入尺寸不变，但 `warp` 比 `rows` 多一次 OCR。
 - 合成卷曲上总额 5 胜 4 负，F1 9 胜 1 负；合成折痕上总额 2 胜 0 负，F1 6 胜 0 负。
 - 平整样本少了 1 张求和对得上，上线时仍需门槛。合成数据偏向文本行方法的局限同样适用。
 
-## 复跑
-
-```bash
-.venv-paddle/Scripts/python tools/compare_curve.py real
-.venv-paddle/Scripts/python tools/compare_curve.py flat
-.venv-paddle/Scripts/python tools/compare_curve.py curl
-.venv-paddle/Scripts/python tools/compare_curve.py crease
-```
-
-结果写入被 Git 忽略的 `logs/curve-compare-v2/`，含私人小票图片，不作为发布资源。
-
 ## 手机端流程（2026-11-02）
 
 新逻辑已写进 Kotlin：`PaperBoundary.kt` 用 u2netp 找四角，失败时退回 OpenCV；`TextLevel.kt` 校平；
-`ReceiptParser.kt` 先打块再细分。解析规则今后以 Kotlin 为准，`app/receipt.py` 不再同步。
+`ReceiptParser.kt` 先打块再细分。解析规则只保留 Kotlin 一份。
 行弯曲不小于 0.5 个字高或 p90 行倾斜不小于 2° 时才校平；若校平让原本对得上的求和失败，则保留第一次结果。
 运行日志新增 `corners`、`point_width`、`point_height` 和 `levelled`。
 

@@ -5,7 +5,7 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sqrt
 
-/** Port of app/receipt.py; ReceiptParserTest keeps the two in step on the sample receipts. */
+/** Reads a receipt from OCR lines; ReceiptParserTest guards the sample receipts against regressions. */
 class OcrLine(
     val text: String,
     val box: IntArray,
