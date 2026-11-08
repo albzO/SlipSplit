@@ -123,5 +123,5 @@
     <string name="export_runs">导出识别记录（zip）</string>
     <string name="export_empty">还没有可导出的识别记录</string>
     <string name="export_title">分享识别记录</string>
-    <string name="version_note">SlipSplit 1.0 · 识别全部在手机上完成</string>
+    <string name="version_note">SlipSplit 1.1 · 识别全部在手机上完成</string>
 </resources>

@@ -12,8 +12,8 @@ android {
         applicationId = "local.ocrbridge"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0"
+        versionCode = 4
+        versionName = "1.1"
         testInstrumentationRunner = providers.gradleProperty("smokeRunner")
             .getOrElse("local.ocrbridge.BoundarySmoke")
     }

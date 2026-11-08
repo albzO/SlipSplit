@@ -126,5 +126,5 @@
     <string name="export_runs">Export records (zip)</string>
     <string name="export_empty">No records to export yet</string>
     <string name="export_title">Share records</string>
-    <string name="version_note">SlipSplit 1.0 · everything is read on this phone</string>
+    <string name="version_note">SlipSplit 1.1 · everything is read on this phone</string>
 </resources>
