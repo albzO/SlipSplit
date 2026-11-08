@@ -128,14 +128,18 @@ App 图标是 `res/drawable/ic_launcher_foreground.xml` 里的自适应图标：
 
 ## 模型
 
-模型文件被 Git 忽略，放在 `SlipSplit/app/src/main/assets/`：
+模型放在 `SlipSplit/app/src/main/assets/`。App 加载的 ORT 格式文件已提交到 Git，克隆后可以直接构建；`.onnx` 源文件被 Git 忽略：
 
 | 目录 | 文件 | 来源 |
 | --- | --- | --- |
 | `u2netp/` | `u2netp.onnx`、`u2netp.ort` | 见该目录 `README.txt` |
 | `ppocr/` | PP-OCR Tiny、Small 和 UVDoc：`det`/`rec` 的 `.onnx` 和 `.ort` | 从现有设备或项目副本复制 |
 
-App 只加载 `.ort`，`.onnx` 是它们的转换来源，不会打进 APK。下载后核对各目录 `README.txt` 里的 SHA256，再运行 `SlipSplit/ort/convert_models.ps1` 生成 App 实际加载的 ORT 格式副本，详见 `SlipSplit/ort/README.md`。停用的 DewarpNet 模型保存在 App 之外的 `models/dewarpnet/`。
+App 只加载 `.ort`，`.onnx` 是它们的转换来源，不会打进 APK。要更换模型时，下载后核对各目录 `README.txt` 里的 SHA256，再运行 `SlipSplit/ort/convert_models.ps1` 生成 App 实际加载的 ORT 格式副本，详见 `SlipSplit/ort/README.md`。
+
+内置的 ONNX Runtime 不完整：只包含这几个模型用到的算子。换成结构不同的模型时，可能用到它没有的算子，模型会加载失败，需要重新编译运行时（约 1 小时）；结构不变、只换权重则不用。
+
+停用的 DewarpNet 模型保存在 App 之外的 `models/dewarpnet/`。
 
 ## 测试
 

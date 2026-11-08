@@ -128,14 +128,18 @@ The launcher icon is an adaptive icon in `res/drawable/ic_launcher_foreground.xm
 
 ## Models
 
-Model files are ignored by Git and live in `SlipSplit/app/src/main/assets/`:
+Models live in `SlipSplit/app/src/main/assets/`. The ORT-format files the app loads are in Git, so a fresh clone builds as is; the `.onnx` sources are ignored by Git:
 
 | Folder | Files | Source |
 | --- | --- | --- |
 | `u2netp/` | `u2netp.onnx`, `u2netp.ort` | See `README.txt` in that folder |
 | `ppocr/` | PP-OCR Tiny and Small, and UVDoc: `det`/`rec` as `.onnx` and `.ort` | Copy from an existing device or project copy |
 
-The app loads only the `.ort` files; the `.onnx` files are their source and stay out of the APK. Check the SHA256 listed in each folder's `README.txt` after downloading, then run `SlipSplit/ort/convert_models.ps1` to write the ORT-format copies the app loads; see `SlipSplit/ort/README.md`. The retired DewarpNet model is kept outside the app in `models/dewarpnet/`.
+The app loads only the `.ort` files; the `.onnx` files are their source and stay out of the APK. To replace a model, check the SHA256 listed in each folder's `README.txt` after downloading, then run `SlipSplit/ort/convert_models.ps1` to write the ORT-format copies the app loads; see `SlipSplit/ort/README.md`.
+
+The bundled ONNX Runtime is not complete: it has kernels only for the operators these models use. A model with a different structure may need operators it lacks and then fails to load until the runtime is rebuilt, which takes about an hour; swapping weights in the same structure does not.
+
+The retired DewarpNet model is kept outside the app in `models/dewarpnet/`.
 
 ## Tests
 

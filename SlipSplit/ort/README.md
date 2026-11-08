@@ -9,7 +9,9 @@ The app uses its own build of ONNX Runtime 1.31.1 instead of the Maven package. 
 | `convert_models.ps1` | Writes an `.ort` next to every `.onnx` in `app/src/main/assets` and rewrites `ops.config` |
 | `build_ort.ps1` | Builds the AAR from `ops.config` and copies it into `app/libs` |
 
-The `.onnx` files stay in the assets folder as the conversion source; Gradle leaves them out of the APK and stops the build if an `.ort` is missing or older than its `.onnx`.
+The runtime is deliberately incomplete. A model that needs an operator or input type missing from `ops.config` fails when its session is created, so a new model architecture usually means rebuilding the AAR; new weights for the same architecture do not.
+
+The `.ort` files are committed; the `.onnx` files stay in the assets folder, ignored by Git, as the conversion source; Gradle leaves them out of the APK and stops the build if an `.ort` is missing or older than its `.onnx`.
 
 ## After adding or replacing a model
 

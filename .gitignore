@@ -9,11 +9,9 @@ SlipSplit/local.properties
 .DS_Store
 Thumbs.db
 
-# Downloaded models; only the folder READMEs and dictionaries are kept.
+# Downloaded ONNX models; the converted .ort files the app loads are kept.
 SlipSplit/app/src/main/assets/ppocr/*/*.onnx
-SlipSplit/app/src/main/assets/ppocr/*/*.ort
 SlipSplit/app/src/main/assets/u2netp/*.onnx
-SlipSplit/app/src/main/assets/u2netp/*.ort
 models/
 
 # Private receipts and NC-licensed samples, plus OCR text derived from them.
