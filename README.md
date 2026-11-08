@@ -23,12 +23,12 @@ The first target is Australian receipts, including bilingual Chinese and English
 
 ## Build and run
 
-Open `android-bridge/` in Android Studio and press Run. The app runs on its own; it needs no computer or network.
+Open `SlipSplit/` in Android Studio and press Run. The app runs on its own; it needs no computer or network.
 
 From the command line, point `JAVA_HOME` at JDK 21:
 
 ```powershell
-cd android-bridge
+cd SlipSplit
 ./gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
@@ -42,14 +42,14 @@ Debug APKs are split by architecture; install `app-arm64-v8a-debug.apk` on a pho
 | UI | Jetpack Compose, Material 3, Navigation Compose, one activity |
 | State | One `AndroidViewModel`; OCR runs on a single worker thread so models load once |
 | Inference | ONNX Runtime for Android |
-| Image processing | OpenCV (edge fallback), Android `Bitmap` and `Canvas` |
-| Models | U²-Netp (paper mask), UVDoc (flattening), PP-OCR detection and recognition in Tiny, Small and Medium sizes |
+| Image processing | Android `Bitmap` and `Canvas`, plus small Kotlin geometry for the paper outline |
+| Models | U²-Netp (paper mask), UVDoc (flattening), PP-OCR detection and recognition in Tiny and Small sizes |
 
 ## Recognition architecture
 
 ```mermaid
 flowchart TD
-    A[Photo] --> B[Find the paper<br/>U²-Netp mask, OpenCV edges as fallback]
+    A[Photo] --> B[Find the paper<br/>U²-Netp mask]
     B --> C[User adjusts corners]
     C --> D[Perspective correction<br/>padded 4% on the short side]
     D --> E[UVDoc flattening]
@@ -68,7 +68,7 @@ flowchart TD
 
 ### Steps
 
-1. **Paper.** U²-Netp marks the receipt as the main object and the app fits four corners to the mask. If the mask is unusable it falls back to OpenCV edges; if both fail the whole photo is kept. The user can drag the corners.
+1. **Paper.** U²-Netp marks the receipt as the main object and the app fits four corners to the mask. The mask's largest region is traced, its convex outline is reduced to candidate quads, and the one that best overlaps the mask is kept. If no quad fits, the whole photo is kept. The user can drag the corners.
 2. **Straightening.** The corners are rectified with a perspective transform, padded slightly so the paper edge is not cut, then UVDoc removes curl. The output keeps the same size, so later boxes match it directly.
 3. **Detection.** PP-OCR detection finds every text box on the flattened photo. The screen draws them all as soon as detection ends.
 4. **Recognition.** Each box is cropped, deskewed and read. The recognizer reports every line as it finishes, so the progress bar counts real lines. For each digit it also keeps the likeliest other digit and its probability.
@@ -102,14 +102,14 @@ flowchart TD
 
 ## Code map
 
-All app code is in `android-bridge/app/src/main/java/local/ocrbridge/`.
+All app code is in `SlipSplit/app/src/main/java/local/ocrbridge/`.
 
 | File | Purpose |
 | --- | --- |
 | `MainActivity.kt` | Activity, navigation and screen transitions |
 | `AppViewModel.kt` | State for one receipt from photo to split; runs the pipeline |
 | `AppSettings.kt` | Model, receipt language, interface language and record keeping |
-| `PaperBoundary.kt`, `DocumentBoundaryDetector.kt` | Paper corners from U²-Netp, with OpenCV as fallback |
+| `PaperBoundary.kt`, `Outline.kt` | Paper corners from the U²-Netp mask, in plain Kotlin |
 | `Perspective.kt`, `Dewarper.kt` | Perspective correction and UVDoc flattening |
 | `PpOcr.kt` | PP-OCR detection and recognition on ONNX Runtime, with progress and second-choice digits |
 | `TextLevel.kt` | Row slope field, levelling and the second read |
@@ -124,19 +124,19 @@ The launcher icon is an adaptive icon in `res/drawable/ic_launcher_foreground.xm
 
 ## Models
 
-Model files are ignored by Git and live in `android-bridge/app/src/main/assets/`:
+Model files are ignored by Git and live in `SlipSplit/app/src/main/assets/`:
 
 | Folder | Files | Source |
 | --- | --- | --- |
 | `u2netp/` | `u2netp.onnx` | See `README.txt` in that folder |
-| `ppocr/` | PP-OCR Tiny, Small and Medium, and UVDoc, as ONNX | Copy from an existing device or project copy |
+| `ppocr/` | PP-OCR Tiny and Small, and UVDoc, as ONNX | Copy from an existing device or project copy |
 
 Check the SHA256 listed in each folder's `README.txt` after downloading. The retired DewarpNet model is kept outside the app in `models/dewarpnet/`.
 
 ## Tests
 
 ```powershell
-cd android-bridge
+cd SlipSplit
 ./gradlew.bat :app:testDebugUnitTest
 ```
 
@@ -158,4 +158,4 @@ adb pull /sdcard/Android/data/local.ocrbridge/files/runs logs/phone-runs
 
 ## History
 
-The desktop Python bench was removed; restore it from commit `442abde` if needed. `bench_*.csv` keep its scores. PP-OCR Small gave the best balance of accuracy and size, Medium is slightly more accurate but uses much more memory, and ML Kit's Latin recognizer cannot read CJK receipts.
+The desktop Python bench and its score sheets were removed; restore them from commit `442abde` if needed. PP-OCR Small gave the best balance of accuracy and size. Medium was slightly more accurate but used much more memory and still misread faded digits, so the app dropped it; its files are kept outside the app in `models/ppocr-medium/`. ML Kit's Latin recognizer cannot read CJK receipts.

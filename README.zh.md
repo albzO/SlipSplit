@@ -23,12 +23,12 @@ SlipSplit 是一款按人分账的安卓 App。拍一张小票，App 在手机�
 
 ## 构建和运行
 
-用 Android Studio 打开 `android-bridge/`，点 Run。App 独立运行，不需要电脑或网络。
+用 Android Studio 打开 `SlipSplit/`，点 Run。App 独立运行，不需要电脑或网络。
 
 命令行需要先把 `JAVA_HOME` 指向 JDK 21：
 
 ```powershell
-cd android-bridge
+cd SlipSplit
 ./gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
@@ -42,14 +42,14 @@ Debug APK 按架构拆分，手机安装 `app-arm64-v8a-debug.apk`。
 | 界面 | Jetpack Compose、Material 3、Navigation Compose，单 Activity |
 | 状态 | 一个 `AndroidViewModel`；OCR 在单个工作线程上运行，模型只加载一次 |
 | 推理 | ONNX Runtime for Android |
-| 图像处理 | OpenCV（备用找边）、Android `Bitmap` 和 `Canvas` |
-| 模型 | U²-Netp（小票分割）、UVDoc（拉平）、PP-OCR 检测和识别（Tiny / Small / Medium 三档） |
+| 图像处理 | Android `Bitmap` 和 `Canvas`，加上一小段 Kotlin 几何代码求小票轮廓 |
+| 模型 | U²-Netp（小票分割）、UVDoc（拉平）、PP-OCR 检测和识别（Tiny / Small 两档） |
 
 ## 识别架构
 
 ```mermaid
 flowchart TD
-    A[照片] --> B[找小票<br/>U²-Netp 分割，OpenCV 找边备用]
+    A[照片] --> B[找小票<br/>U²-Netp 分割]
     B --> C[用户调整四角]
     C --> D[梯形矫正<br/>短边外扩 4%]
     D --> E[UVDoc 拉平]
@@ -68,7 +68,7 @@ flowchart TD
 
 ### 步骤
 
-1. **找小票。** U²-Netp 把小票当作画面主体分割出来，App 按分割结果求四个角。分割不可用时改用 OpenCV 找边；两者都失败就保留整张照片。用户可以拖动四角。
+1. **找小票。** U²-Netp 把小票当作画面主体分割出来，App 按分割结果求四个角。App 取分割结果里最大的一块，把它的凸轮廓化简成几个候选四边形，选和分割区域重合度最高的那个；求不出四边形时保留整张照片。用户可以拖动四角。
 2. **矫正。** 按四角做梯形矫正，四周略微外扩以免切掉纸边，再用 UVDoc 去掉纸张弯曲。输出尺寸不变，后续文字框可以直接对上。
 3. **检测。** PP-OCR 检测在拉平后的照片上找出所有文字框，检测一结束界面就把它们全部画出来。
 4. **识别。** 每个框被裁出、摆正后识别。识别器每读完一行就报告一次，所以进度条数的是真实行数。对每个数字，它还会记下可能性第二高的数字和概率。
@@ -102,14 +102,14 @@ flowchart TD
 
 ## 代码结构
 
-App 代码全部在 `android-bridge/app/src/main/java/local/ocrbridge/`。
+App 代码全部在 `SlipSplit/app/src/main/java/local/ocrbridge/`。
 
 | 文件 | 作用 |
 | --- | --- |
 | `MainActivity.kt` | Activity、页面导航和切换动画 |
 | `AppViewModel.kt` | 一张小票从拍照到分账的状态，以及识别流程 |
 | `AppSettings.kt` | 模型、小票语言、界面语言和识别记录开关 |
-| `PaperBoundary.kt`、`DocumentBoundaryDetector.kt` | 用 U²-Netp 求小票四角，OpenCV 备用 |
+| `PaperBoundary.kt`、`Outline.kt` | 用 U²-Netp 分割结果求小票四角，纯 Kotlin 实现 |
 | `Perspective.kt`、`Dewarper.kt` | 梯形矫正和 UVDoc 拉平 |
 | `PpOcr.kt` | ONNX Runtime 上的 PP-OCR 检测和识别，带进度和数字第二选择 |
 | `TextLevel.kt` | 行斜率场、校平和第二遍识别 |
@@ -124,19 +124,19 @@ App 图标是 `res/drawable/ic_launcher_foreground.xml` 里的自适应图标：
 
 ## 模型
 
-模型文件被 Git 忽略，放在 `android-bridge/app/src/main/assets/`：
+模型文件被 Git 忽略，放在 `SlipSplit/app/src/main/assets/`：
 
 | 目录 | 文件 | 来源 |
 | --- | --- | --- |
 | `u2netp/` | `u2netp.onnx` | 见该目录 `README.txt` |
-| `ppocr/` | PP-OCR Tiny、Small、Medium 和 UVDoc 的 ONNX | 从现有设备或项目副本复制 |
+| `ppocr/` | PP-OCR Tiny、Small 和 UVDoc 的 ONNX | 从现有设备或项目副本复制 |
 
 下载后核对各目录 `README.txt` 里的 SHA256。停用的 DewarpNet 模型保存在 App 之外的 `models/dewarpnet/`。
 
 ## 测试
 
 ```powershell
-cd android-bridge
+cd SlipSplit
 ./gradlew.bat :app:testDebugUnitTest
 ```
 
@@ -158,4 +158,4 @@ adb pull /sdcard/Android/data/local.ocrbridge/files/runs logs/phone-runs
 
 ## 历史
 
-桌面 Python 比较台已移除，需要时可从提交 `442abde` 恢复，`bench_*.csv` 保留了当时的跑分。PP-OCR Small 在准确率和体积之间最均衡；Medium 准确率略高但占用内存多得多；ML Kit 的拉丁文识别器读不了中日韩小票。
+桌面 Python 比较台和跑分表已移除，需要时可从提交 `442abde` 恢复。PP-OCR Small 在准确率和体积之间最均衡；Medium 准确率略高，但占用内存多得多，而且同样会读错印淡的数字，所以 App 已不再包含它，模型文件保存在 App 之外的 `models/ppocr-medium/`。ML Kit 的拉丁文识别器读不了中日韩小票。

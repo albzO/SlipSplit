@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SlipSplit</string>
+    <string name="back">返回</string>
+    <string name="cancel">取消</string>
+    <string name="save">保存</string>
+    <string name="done">完成</string>
+    <string name="settings">设置</string>
+
+    <string name="home_headline">拍一张小票\n按人分账</string>
+    <string name="home_footer">识别全部在本地完成，照片不上传</string>
+    <string name="camera">拍照</string>
+    <string name="gallery">从相册选择</string>
+    <string name="language_title">识别语言</string>
+    <string name="language_auto">自动</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">中文优先</string>
+    <string name="language_auto_hint">按小票内容自动选择中文或英文。</string>
+    <string name="language_english_hint">纯英文小票：只输出英文字符。</string>
+    <string name="language_chinese_hint">中英混合小票请选这个，否则中文会被读成乱码。</string>
+
+    <string name="crop_title">调整小票边角</string>
+    <string name="crop_loading">正在导入照片…</string>
+    <string name="crop_detecting">正在找小票边角…</string>
+    <string name="crop_found">已自动找到边角，拖动圆点可微调。\n识别前会自动拉平（UVDoc + 行矫正）。</string>
+    <string name="crop_not_found">没找到清晰的边角，请拖动四个圆点框住小票。</string>
+    <string name="retake">重拍</string>
+    <string name="start_reading">开始识别</string>
+
+    <string name="recognize_title">识别小票</string>
+    <string name="stage_flatten">正在拉平小票…</string>
+    <string name="stage_detect">正在找文字…</string>
+    <string name="stage_detect_again">拉平完成，重新找文字…</string>
+    <string name="stage_read">正在识别</string>
+    <string name="stage_read_again">第 2 遍：正在识别</string>
+    <string name="stage_level">行歪斜，拉平后再读一遍</string>
+    <string name="stage_organize">整理商品…</string>
+    <string name="stage_done_match">识别出 %1$d 项商品，合计对上</string>
+    <string name="stage_done_check">识别出 %1$d 项商品，合计待核对</string>
+    <string name="stage_failed">识别失败：%1$s</string>
+    <string name="lines_read">%1$d / %2$d 行</string>
+    <string name="lines_total">%1$d 行</string>
+    <string name="pass_first">第 1 遍</string>
+    <string name="pass_second">第 2 遍（拉平后）</string>
+
+    <string name="unknown_store">小票</string>
+    <string name="item_count">%1$d 项</string>
+    <string name="view_receipt">看小票</string>
+    <string name="split_hint">当前：%1$s — 点商品记到 TA 名下，再点取消；长按编辑</string>
+    <string name="total_title">小票总额</string>
+    <string name="total_no_total">没有读到总额，按商品合计计算</string>
+    <string name="total_match">与商品合计一致</string>
+    <string name="total_match_adjusted">商品合计 %1$s · 整单调整 %2$s</string>
+    <string name="total_mismatch">商品合计 %1$s，差 %2$s，长按商品可修改</string>
+    <string name="shared_by">%1$d 人平分，每人约 %2$s</string>
+    <string name="review_title">检测到 OCR 识别错误，已按总额修正 %1$d 处，请核实</string>
+    <string name="review_hint">对照小票上标红的位置核实；如果不对，进入分账后长按该商品修改。</string>
+    <string name="review_confirm">进入分账</string>
+    <string name="adjustment_title">整单调整（按同一比例计入每个人）</string>
+    <string name="adjustment_name">折扣、附加费、小费与取整</string>
+    <string name="add_item">手动添加商品</string>
+    <string name="edit_item">编辑商品</string>
+    <string name="item_name">名称</string>
+    <string name="item_price">金额</string>
+    <string name="price_invalid">请输入数字金额</string>
+    <string name="pick_from_photo">从小票图片里选取</string>
+    <string name="delete_item">删除这一项</string>
+    <string name="takes_rest">%1$s · 其余归TA</string>
+    <string name="add_person">添加一个人</string>
+    <string name="people_hint">长按一个人可删除</string>
+    <string name="remove_person_title">删除 %1$s？</string>
+    <string name="remove_person_body">TA 选的商品会回到默认归属。</string>
+    <string name="remove">删除</string>
+    <string name="leave_title">放弃这次分账？</string>
+    <string name="leave_body">已选的分配不会保留。</string>
+    <string name="leave">放弃</string>
+
+    <string name="pick_title">点选小票上的文字</string>
+    <string name="pick_hint">单指拖动框选重新识别 · 双指缩放移动</string>
+    <string name="photo_title">小票图片</string>
+    <string name="photo_hint">双指缩放，单指移动</string>
+    <string name="picked">已选中</string>
+    <string name="reading_region">识别中…</string>
+    <string name="read_again">重新识别这块</string>
+    <string name="fill_price">填入金额</string>
+    <string name="fill_name">填入名称</string>
+
+    <string name="summary_title">分账结果</string>
+    <string name="summary_counts">%1$d 人 · %2$d 项</string>
+    <string name="adjustment_line">整单调整</string>
+    <string name="share_fraction">%1$s（1/%2$d）</string>
+    <string name="person_total">%1$s：%2$s</string>
+    <string name="share_image">分享图片</string>
+    <string name="share_title">分享分账结果</string>
+    <string name="share_footer">由 SlipSplit 分账</string>
+    <string name="back_to_edit">返回修改</string>
+    <string name="copy_text">复制文字</string>
+    <string name="copied">已复制</string>
+    <string name="finish">完成，回到首页</string>
+
+    <string name="history_swipe">上滑查看历史记录</string>
+    <string name="history_title">历史记录</string>
+    <string name="history_empty_title">还没有分账记录</string>
+    <string name="history_empty_body">每次在分账结果页点"完成"后，结果会保存在这里，只存在这台手机上。</string>
+    <string name="history_meta">%1$s · %2$d 项</string>
+    <string name="history_hint">点一条可继续编辑；长按可删除</string>
+    <string name="history_delete_title">删除这条记录？</string>
+    <string name="history_delete_body">记录会从手机上删除，无法恢复。</string>
+
+    <string name="settings_language">界面语言</string>
+    <string name="ui_language_system">跟随系统</string>
+    <string name="settings_model">识别模型</string>
+    <string name="model_tiny">Tiny</string>
+    <string name="model_tiny_hint">最快，适合清晰的小票</string>
+    <string name="model_small">Small（推荐）</string>
+    <string name="model_small_hint">速度和准确度平衡</string>
+    <string name="settings_image">图像处理</string>
+    <string name="flatten_title">拉平：UVDoc + 行矫正</string>
+    <string name="flatten_hint">固定开启，先去掉纸张弯曲，再把每一行文字拉平。</string>
+    <string name="settings_debug">调试</string>
+    <string name="save_runs">保存识别记录</string>
+    <string name="save_runs_hint">照片和识别结果留在手机里，便于排查</string>
+    <string name="export_runs">导出识别记录（zip）</string>
+    <string name="export_empty">还没有可导出的识别记录</string>
+    <string name="export_title">分享识别记录</string>
+    <string name="version_note">SlipSplit 1.0 · 识别全部在手机上完成</string>
+</resources>
