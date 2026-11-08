@@ -2,15 +2,20 @@ package local.ocrbridge
 
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.sqrt
 
 /** Reads a receipt from OCR lines; ReceiptParserTest guards the sample receipts against regressions. */
+/** A digit the recognizer also found likely at [position] of a line, beside the one it [chose]. */
+class Alternative(val position: Int, val digit: Char, val probability: Float, val chose: Float)
+
 class OcrLine(
     val text: String,
     val box: IntArray,
     val score: Float = 0f,
     val corners: FloatArray? = null,
+    val alternatives: List<Alternative> = emptyList(),
 ) {
     /** The box in levelled coordinates, which is what the parser reads. */
     var aligned: IntArray = box
@@ -28,6 +33,9 @@ data class ReceiptItem(
 
     /** Discount printed under this item; the price already has it taken off. */
     var discount: Double = 0.0
+
+    /** The price as first read, when the printed total showed a digit was misread. */
+    var readAs: Double? = null
 }
 
 class Receipt(
@@ -69,6 +77,11 @@ private const val FIT_OUTLIER_RATIO = 3.0
 private const val FIT_MIN_GAIN = 0.7
 private const val MIN_LONG_LINES = 3
 private const val WRAP_RATIO = 0.75
+private const val MAX_DIGIT_FIXES = 3
+private const val MAX_FIX_CANDIDATES = 40
+private const val MIN_ALTERNATIVE = 0.01f
+// The fix taken must be at least this many times likelier than the runner-up.
+private const val CLEAR_WIN = 2.0
 private const val AMOUNT =
     "-?[0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{1,2})?|-?[0-9]+(?:[.,][0-9]{1,2})?"
 
@@ -743,6 +756,7 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
     result.splitBlocks(entries)
     if (result.total == null) result.total = result.subtotal
     applyItemDiscounts(result)
+    fixDigits(result)
     reconcile(result)
     readHeader(rows, result)
     return result
@@ -797,6 +811,67 @@ private fun applyItemDiscounts(receipt: Receipt) {
         return
     }
     receipt.discount = printed
+}
+
+/** One digit of one item's price read as the recognizer's second choice; [cost] grows as it gets less likely. */
+private class DigitFix(val item: Int, val price: Double, val cost: Double)
+
+private val AMOUNT_TOKEN = Regex(AMOUNT)
+
+/** Every second-choice digit within the amount that priced this item, as a new price. */
+private fun digitFixes(index: Int, item: ReceiptItem): List<DigitFix> {
+    val fixes = ArrayList<DigitFix>()
+    // The printed amount may be the price before an item discount was taken off.
+    val printed = listOf(item.price, item.price + item.discount)
+    for (line in item.lines.asReversed()) {
+        for (match in AMOUNT_TOKEN.findAll(line.text)) {
+            val value = toNumber(match.value) ?: continue
+            if (printed.none { abs(it - value) < EXACT_TOLERANCE / 2 }) continue
+            for (choice in line.alternatives) {
+                if (choice.position !in match.range || choice.probability < MIN_ALTERNATIVE) continue
+                val chars = match.value.toCharArray()
+                chars[choice.position - match.range.first] = choice.digit
+                val changed = toNumber(String(chars)) ?: continue
+                fixes.add(DigitFix(index, item.price + changed - value, ln(choice.chose / choice.probability.toDouble())))
+            }
+            return fixes
+        }
+    }
+    return fixes
+}
+
+/**
+ * When the items miss the printed subtotal or total, tries reading the fewest uncertain digits
+ * as the recognizer's second choice. A fix is kept only when it adds up to the cent and clearly
+ * beats any other fix of the same size; otherwise the prices stay as read.
+ */
+private fun fixDigits(receipt: Receipt) {
+    val items = receipt.items
+    if (items.isEmpty() || (receipt.total == null && receipt.subtotal == null)) return
+    val prices = items.map { it.price }
+    if (totalsAgree(receipt, prices, ::exact)) return
+    val fixes = items.flatMapIndexed(::digitFixes).sortedBy { it.cost }.take(MAX_FIX_CANDIDATES)
+    for (size in 1..minOf(MAX_DIGIT_FIXES, fixes.size)) {
+        val fits = combinations(fixes.size, size).map { picked -> picked.map { fixes[it] } }
+            .filter { set -> set.distinctBy { it.item }.size == set.size }
+            .filter { set ->
+                val changed = prices.toMutableList()
+                set.forEach { changed[it.item] = it.price }
+                totalsAgree(receipt, changed, ::exact)
+            }
+            .sortedBy { set -> set.sumOf { it.cost } }
+        if (fits.isEmpty()) continue
+        if (fits.size > 1 && fits[1].sumOf { it.cost } - fits[0].sumOf { it.cost } < ln(CLEAR_WIN)) return
+        for (fix in fits[0]) {
+            val item = items[fix.item]
+            items[fix.item] = item.copy(price = Math.round(fix.price * 100) / 100.0).also {
+                it.lines = item.lines
+                it.discount = item.discount
+                it.readAs = item.price
+            }
+        }
+        return
+    }
 }
 
 /** Every way to pick `size` of `count` rows, in lexicographic order. */

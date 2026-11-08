@@ -20,12 +20,21 @@ class RunReplay {
                 val box = line.getJSONArray("box")
                 val poly = line.optJSONArray("poly")
                 val corners = poly?.let { p -> FloatArray(8) { i -> p.getJSONArray(i / 2).getInt(i % 2).toFloat() } }
-                OcrLine(line.getString("text"), IntArray(4) { i -> box.getInt(i) }, 0f, corners)
+                val raw = line.optJSONArray("alternatives")
+                val alternatives = (0 until (raw?.length() ?: 0)).map { i ->
+                    val choice = raw!!.getJSONObject(i)
+                    Alternative(
+                        choice.getInt("position"), choice.getString("digit")[0],
+                        choice.getDouble("probability").toFloat(), choice.getDouble("chose").toFloat(),
+                    )
+                }
+                OcrLine(line.getString("text"), IntArray(4) { i -> box.getInt(i) }, 0f, corners, alternatives)
             }
             val receipt = parseReceipt(lines)
             out.append("=== ${folder.name}  company=${receipt.company} date=${receipt.date} ${receipt.time}\n")
             for (item in receipt.items) {
-                val off = if (item.discount > 0) " (-${item.discount})" else ""
+                val off = (if (item.discount > 0) " (-${item.discount})" else "") +
+                    (item.readAs?.let { " (read as $it)" } ?: "")
                 out.append("  ${item.name} | ${item.spec} | x${item.qty} | ${item.price}$off\n")
             }
             for (item in receipt.dropped) out.append("  [dropped] ${item.name} | x${item.qty} | ${item.price}\n")

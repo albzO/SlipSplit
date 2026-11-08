@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Compose draws every screen; this only colors the window before the first frame. -->
     <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorAccent">@color/ink</item>
+        <item name="android:windowBackground">@color/background</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

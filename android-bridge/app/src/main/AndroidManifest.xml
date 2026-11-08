@@ -6,12 +6,11 @@
         android:theme="@style/AppTheme"
         android:allowBackup="false"
         android:largeHeap="true">
-        <activity android:name=".PhotoReviewActivity" android:exported="false"
-            android:screenOrientation="portrait" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

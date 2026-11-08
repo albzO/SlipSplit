@@ -174,6 +174,36 @@ class ReceiptParserTest {
         assertEquals(ReceiptItem("Ravioli 325g", 2, 10.80, "", "Qty 2 @ \$5.40 each"), receipt.items[0])
     }
 
+    private fun faded(text: String, box: IntArray, vararg positions: Int) =
+        OcrLine(text, box, 0f, null, positions.map { Alternative(it, '8', 0.08f, 0.9f) })
+
+    @Test
+    fun readsFadedDigitsAgainWhenTheSubtotalSaysSo() {
+        val lines = listOf(
+            OcrLine("Water 2.48", intArrayOf(0, 0, 800, 30)),
+            faded("Lemon Tea 5.93", intArrayOf(0, 40, 800, 70), 13),
+            faded("Sparkling 2.93", intArrayOf(0, 80, 800, 110), 13),
+            OcrLine("Lamb 13.98", intArrayOf(0, 120, 800, 150)),
+            OcrLine("SUB TOTAL: 25.42", intArrayOf(0, 200, 800, 230)),
+            OcrLine("TOTAL: 25.42", intArrayOf(0, 240, 800, 270)),
+        )
+        val receipt = parseReceipt(lines)
+        assertEquals(listOf(2.48, 5.98, 2.98, 13.98), receipt.items.map { it.price })
+        assertEquals(listOf(null, 5.93, 2.93, null), receipt.items.map { it.readAs })
+    }
+
+    @Test
+    fun leavesPricesAloneWhenNoSecondChoiceAddsUp() {
+        val lines = listOf(
+            OcrLine("Water 2.48", intArrayOf(0, 0, 800, 30)),
+            faded("Lemon Tea 5.93", intArrayOf(0, 40, 800, 70), 13),
+            OcrLine("TOTAL: 9.00", intArrayOf(0, 200, 800, 230)),
+        )
+        val receipt = parseReceipt(lines)
+        assertEquals(listOf(2.48, 5.93), receipt.items.map { it.price })
+        assertEquals(listOf(null, null), receipt.items.map { it.readAs })
+    }
+
     @Test
     fun readsCompanyDateAndTimeFromTheHeader() {
         val rows = listOf(

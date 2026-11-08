@@ -46,6 +46,12 @@ fun saveRun(
             val poly = (0 until 4).map { JSONArray(listOf(corners[it * 2].toInt(), corners[it * 2 + 1].toInt())) }
             entry.put("poly", JSONArray(poly))
         }
+        if (line.alternatives.isNotEmpty()) {
+            entry.put("alternatives", JSONArray(line.alternatives.map {
+                JSONObject().put("position", it.position).put("digit", it.digit.toString())
+                    .put("probability", it.probability.toDouble()).put("chose", it.chose.toDouble())
+            }))
+        }
         rawLines.put(entry)
     }
     val run = JSONObject()

@@ -258,17 +258,41 @@ internal object TextLevel {
 
 internal class Reading(val photo: Bitmap, val lines: List<OcrLine>, val receipt: Receipt, val levelled: Boolean)
 
+/** What a read has got to, for a screen to show while it runs. */
+internal sealed interface ReadEvent {
+    /** Detection found these boxes on this photo; pass 2 reads the levelled photo. */
+    class Found(val pass: Int, val photo: Bitmap, val boxes: List<FloatArray>) : ReadEvent
+
+    /** The line at this index of the found boxes has been read. */
+    class Line(val pass: Int, val index: Int, val text: String) : ReadEvent
+
+    /** Rows stray, so the photo is being levelled for a second read. */
+    object Levelling : ReadEvent
+}
+
 /** Reads again on levelled pixels when rows stray, unless that loses a total the first read matched. */
-internal fun readLevelled(ocr: PpOcr, bitmap: Bitmap, language: ReceiptLanguage): Reading {
-    val lines = ocr.recognize(bitmap, language)
+internal fun readLevelled(
+    ocr: PpOcr,
+    bitmap: Bitmap,
+    language: ReceiptLanguage,
+    onEvent: (ReadEvent) -> Unit = {},
+): Reading {
+    fun read(pass: Int, photo: Bitmap) = ocr.recognize(
+        photo,
+        language,
+        onBoxes = { onEvent(ReadEvent.Found(pass, photo, it)) },
+        onLine = { index, text -> onEvent(ReadEvent.Line(pass, index, text)) },
+    )
+    val lines = read(1, bitmap)
     val first = Reading(bitmap, lines, parseReceipt(lines), false)
     val fit = TextLevel.fit(lines.mapNotNull { it.corners }, bitmap.width, bitmap.height)
     if (fit == null || !fit.needsLevelling) return first
+    onEvent(ReadEvent.Levelling)
     val pixels = IntArray(bitmap.width * bitmap.height)
     bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
     val flat = TextLevel.flatten(pixels, bitmap.width, bitmap.height, fit.field) ?: return first
     val level = Bitmap.createBitmap(flat, bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-    val levelLines = ocr.recognize(level, language)
+    val levelLines = read(2, level)
     val second = Reading(level, levelLines, parseReceipt(levelLines), true)
     return if (sumMatches(first.receipt) && !sumMatches(second.receipt)) first else second
 }

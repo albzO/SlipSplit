@@ -37,8 +37,10 @@ private class Point(val x: Int, val y: Int)
 /** A rotated text box; corners run top-left, top-right, bottom-right, bottom-left. */
 private class TextBox(val corners: FloatArray, val width: Float, val height: Float)
 
+private class Decoded(val text: String, val score: Float, val alternatives: List<Alternative>)
+
 /** A line read twice: with every character allowed, and restricted to English. */
-private class LineReading(val box: TextBox, val free: Pair<String, Float>, val english: Pair<String, Float>)
+private class LineReading(val box: TextBox, val free: Decoded, val english: Decoded)
 
 /** PP-OCR detection and recognition on ONNX Runtime, without OpenCV. */
 class PpOcr(context: Context, tier: String) {
@@ -47,6 +49,7 @@ class PpOcr(context: Context, tier: String) {
     private val rec: OrtSession
     private val charset: List<String>
     private val englishOnly: BooleanArray
+    private val digits: IntArray
 
     init {
         val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(NUM_THREADS) }
@@ -56,6 +59,7 @@ class PpOcr(context: Context, tier: String) {
         charset = assets.open("ppocr/$tier/dict.txt").bufferedReader().readLines() + " "
         // Output index 0 is the CTC blank, so characters start at index 1.
         englishOnly = BooleanArray(charset.size + 1) { it == 0 || isEnglishCharacter(charset[it - 1]) }
+        digits = ('0'..'9').map { charset.indexOf(it.toString()) + 1 }.filter { it > 0 }.toIntArray()
     }
 
     fun close() {
@@ -63,19 +67,32 @@ class PpOcr(context: Context, tier: String) {
         rec.close()
     }
 
-    fun recognize(bitmap: Bitmap, language: ReceiptLanguage): List<OcrLine> {
-        val readings = detect(bitmap)
-            .sortedWith(compareBy({ it.corners[1] }, { it.corners[0] }))
-            .map { readLine(crop(bitmap, it), it) }
+    /**
+     * Reads every line of text. [onBoxes] hears every box once detection ends and [onLine] each
+     * line as it is read, in that order, so a screen can show real progress without slowing it.
+     */
+    fun recognize(
+        bitmap: Bitmap,
+        language: ReceiptLanguage,
+        onBoxes: (List<FloatArray>) -> Unit = {},
+        onLine: (Int, String) -> Unit = { _, _ -> },
+    ): List<OcrLine> {
+        val boxes = detect(bitmap).sortedWith(compareBy({ it.corners[1] }, { it.corners[0] }))
+        onBoxes(boxes.map { it.corners })
+        val readings = boxes.mapIndexed { index, box ->
+            readLine(crop(bitmap, box), box).also {
+                onLine(index, (if (language == ReceiptLanguage.ENGLISH) it.english else it.free).text)
+            }
+        }
         val english = when (language) {
             ReceiptLanguage.ENGLISH -> true
             ReceiptLanguage.CHINESE -> false
-            ReceiptLanguage.AUTO -> looksEnglish(readings.map { it.free.first })
+            ReceiptLanguage.AUTO -> looksEnglish(readings.map { it.free.text })
         }
         val lines = ArrayList<OcrLine>()
         for (reading in readings) {
-            val (text, score) = if (english) reading.english else reading.free
-            if (text.isBlank()) continue
+            val decoded = if (english) reading.english else reading.free
+            if (decoded.text.isBlank()) continue
             val box = reading.box
             val xs = (0 until 4).map { box.corners[it * 2] }
             val ys = (0 until 4).map { box.corners[it * 2 + 1] }
@@ -85,7 +102,7 @@ class PpOcr(context: Context, tier: String) {
                 xs.max().toInt(),
                 ys.max().toInt(),
             )
-            lines.add(OcrLine(text, bounds, score, box.corners))
+            lines.add(OcrLine(decoded.text, bounds, decoded.score, box.corners, decoded.alternatives))
         }
         return lines
     }
@@ -257,9 +274,14 @@ class PpOcr(context: Context, tier: String) {
         return LineReading(box, decode(steps, null), decode(steps, englishOnly))
     }
 
-    /** CTC greedy decode; a step whose best guess is disallowed takes the best allowed character. */
-    private fun decode(steps: Array<FloatArray>, allowed: BooleanArray?): Pair<String, Float> {
+    /**
+     * CTC greedy decode; a step whose best guess is disallowed takes the best allowed character.
+     * For every digit it also keeps the likeliest other digit, so a faded 8 read as 3 can be
+     * read again when the receipt's own total says the price is wrong.
+     */
+    private fun decode(steps: Array<FloatArray>, allowed: BooleanArray?): Decoded {
         val text = StringBuilder()
+        val alternatives = ArrayList<Alternative>()
         var scoreSum = 0f
         var scoreCount = 0
         var previous = 0
@@ -277,9 +299,24 @@ class PpOcr(context: Context, tier: String) {
                 text.append(charset[index - 1])
                 scoreSum += step[index]
                 scoreCount++
+                otherDigit(step, index, text.length - 1)?.let(alternatives::add)
+            } else if (index != 0) {
+                // The same character spans several steps; keep its strongest rival.
+                val other = otherDigit(step, index, text.length - 1)
+                val last = alternatives.lastOrNull()?.takeIf { it.position == text.length - 1 }
+                if (other != null && (last == null || other.probability > last.probability)) {
+                    if (last != null) alternatives.removeAt(alternatives.size - 1)
+                    alternatives.add(other)
+                }
             }
             previous = index
         }
-        return text.toString() to if (scoreCount > 0) scoreSum / scoreCount else 0f
+        return Decoded(text.toString(), if (scoreCount > 0) scoreSum / scoreCount else 0f, alternatives)
+    }
+
+    private fun otherDigit(step: FloatArray, chosen: Int, position: Int): Alternative? {
+        if (chosen !in digits) return null
+        val best = digits.filter { it != chosen }.maxByOrNull { step[it] } ?: return null
+        return Alternative(position, charset[best - 1][0], step[best], step[chosen])
     }
 }
