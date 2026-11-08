@@ -27,7 +27,7 @@ Download `SlipSplit-<version>-arm64-v8a.apk` from [Releases](https://github.com/
 
 ## Build and run
 
-Open `SlipSplit/` in Android Studio and press Run. The app runs on its own; it needs no computer or network.
+Open `SlipSplit/` in Android Studio and press Run.
 
 From the command line, point `JAVA_HOME` at JDK 21:
 

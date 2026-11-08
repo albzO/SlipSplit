@@ -27,7 +27,7 @@ SlipSplit 是一款按人分账的安卓 App。拍一张小票，App 在手机�
 
 ## 构建和运行
 
-用 Android Studio 打开 `SlipSplit/`，点 Run。App 独立运行，不需要电脑或网络。
+用 Android Studio 打开 `SlipSplit/`，点 Run。
 
 命令行需要先把 `JAVA_HOME` 指向 JDK 21：
 
