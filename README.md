@@ -41,7 +41,7 @@ Debug APKs are split by architecture; install `app-arm64-v8a-debug.apk` on a pho
 | Language | Kotlin |
 | UI | Jetpack Compose, Material 3, Navigation Compose, one activity |
 | State | One `AndroidViewModel`; OCR runs on a single worker thread so models load once |
-| Inference | ONNX Runtime for Android |
+| Inference | ONNX Runtime for Android, a minimal build with only the operators the models use (`SlipSplit/ort/`) |
 | Image processing | Android `Bitmap` and `Canvas`, plus small Kotlin geometry for the paper outline |
 | Models | U²-Netp (paper mask), UVDoc (flattening), PP-OCR detection and recognition in Tiny and Small sizes |
 
@@ -131,7 +131,7 @@ Model files are ignored by Git and live in `SlipSplit/app/src/main/assets/`:
 | `u2netp/` | `u2netp.onnx` | See `README.txt` in that folder |
 | `ppocr/` | PP-OCR Tiny and Small, and UVDoc, as ONNX | Copy from an existing device or project copy |
 
-Check the SHA256 listed in each folder's `README.txt` after downloading. The retired DewarpNet model is kept outside the app in `models/dewarpnet/`.
+Check the SHA256 listed in each folder's `README.txt` after downloading. Then run `SlipSplit/ort/convert_models.ps1` to write the ORT-format copies the app loads; see `SlipSplit/ort/README.md`. The retired DewarpNet model is kept outside the app in `models/dewarpnet/`.
 
 ## Tests
 
@@ -152,9 +152,13 @@ adb pull /sdcard/Android/data/local.ocrbridge/files/runs logs/phone-runs
 
 ## Privacy and samples
 
-- Recognition and parsing run on the phone. Recognition records are off by default; when turned on they stay on the phone and leave it only through the export in Settings.
+- Recognition and parsing run on the phone, and the app has no network permission. Recognition records are off by default; when turned on they stay on the phone and leave it only through the export in Settings.
 - Split history, including the receipt photo, stays in the app's private storage and is never exported.
 - `samples/` holds private receipts and CC BY-NC samples. It is ignored by Git and must not ship with the app; sources and licences are in `samples/sources.json`.
+
+## License
+
+SlipSplit is licensed under the [Apache License 2.0](LICENSE). Third-party parts keep their own licences: ONNX Runtime is MIT, U²-Netp and PP-OCR are Apache-2.0, and UVDoc follows its project's licence. Model sources are listed in each assets folder's `README.txt`.
 
 ## History
 

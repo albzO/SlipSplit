@@ -18,7 +18,7 @@ class Dewarper(context: Context) : java.io.Closeable {
 
     init {
         val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(NUM_THREADS) }
-        val model = context.assets.open("ppocr/uvdoc/det.onnx").use { it.readBytes() }
+        val model = context.assets.open("ppocr/uvdoc/det.ort").use { it.readBytes() }
         session = env.createSession(model, options)
     }
 

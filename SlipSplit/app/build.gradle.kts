@@ -12,8 +12,8 @@ android {
         applicationId = "local.ocrbridge"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.1"
+        versionCode = 5
+        versionName = "1.2"
         testInstrumentationRunner = providers.gradleProperty("smokeRunner")
             .getOrElse("local.ocrbridge.BoundarySmoke")
     }
@@ -40,6 +40,11 @@ android {
         }
     }
 
+    // The app loads the ORT-format copies; the .onnx files next to them are only the conversion source.
+    androidResources {
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!*.onnx"
+    }
+
     // Deploy only the device's native libraries instead of shipping emulator libraries too.
     splits {
         abi {
@@ -54,7 +59,8 @@ android {
 dependencies {
     implementation("androidx.core:core:1.13.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.1")
+    // ONNX Runtime 1.31.1 built with only the operators in ../ort/ops.config; see ../ort/README.md.
+    implementation(files("libs/onnxruntime-android-minimal-1.31.1.aar"))
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
@@ -68,3 +74,22 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }
+
+// The minimal ONNX Runtime reads only ORT-format models, so stop early if a model was not converted.
+val checkOrtModels by tasks.registering {
+    val assets = layout.projectDirectory.dir("src/main/assets")
+    inputs.files(fileTree(assets) { include("**/*.onnx", "**/*.ort") })
+    doLast {
+        val stale = fileTree(assets) { include("**/*.onnx") }.files.filter { onnx ->
+            val ort = File(onnx.path.removeSuffix(".onnx") + ".ort")
+            !ort.exists() || ort.lastModified() < onnx.lastModified()
+        }
+        if (stale.isNotEmpty()) {
+            throw GradleException(
+                "Convert these models with SlipSplit/ort/convert_models.ps1: " +
+                    stale.joinToString { it.relativeTo(assets.asFile).path }
+            )
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(checkOrtModels) }

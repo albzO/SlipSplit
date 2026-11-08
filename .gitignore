@@ -11,7 +11,9 @@ Thumbs.db
 
 # Downloaded models; only the folder READMEs and dictionaries are kept.
 SlipSplit/app/src/main/assets/ppocr/*/*.onnx
+SlipSplit/app/src/main/assets/ppocr/*/*.ort
 SlipSplit/app/src/main/assets/u2netp/*.onnx
+SlipSplit/app/src/main/assets/u2netp/*.ort
 models/
 
 # Private receipts and NC-licensed samples, plus OCR text derived from them.

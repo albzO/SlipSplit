@@ -30,7 +30,7 @@ internal class PaperSegmenter(context: Context) : Closeable {
 
     init {
         val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(NUM_THREADS) }
-        val model = context.assets.open("u2netp/u2netp.onnx").use { it.readBytes() }
+        val model = context.assets.open("u2netp/u2netp.ort").use { it.readBytes() }
         session = env.createSession(model, options)
     }
 

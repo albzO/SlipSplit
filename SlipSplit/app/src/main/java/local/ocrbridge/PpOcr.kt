@@ -54,8 +54,8 @@ class PpOcr(context: Context, tier: String) {
     init {
         val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(NUM_THREADS) }
         val assets = context.assets
-        det = env.createSession(assets.open("ppocr/$tier/det.onnx").use { it.readBytes() }, options)
-        rec = env.createSession(assets.open("ppocr/$tier/rec.onnx").use { it.readBytes() }, options)
+        det = env.createSession(assets.open("ppocr/$tier/det.ort").use { it.readBytes() }, options)
+        rec = env.createSession(assets.open("ppocr/$tier/rec.ort").use { it.readBytes() }, options)
         charset = assets.open("ppocr/$tier/dict.txt").bufferedReader().readLines() + " "
         // Output index 0 is the CTC blank, so characters start at index 1.
         englishOnly = BooleanArray(charset.size + 1) { it == 0 || isEnglishCharacter(charset[it - 1]) }

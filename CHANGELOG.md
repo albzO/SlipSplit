@@ -2,6 +2,15 @@
 
 **English** | [中文](CHANGELOG.zh.md)
 
+## 1.2 — 2026-11-09
+
+### Changed
+- ONNX Runtime is a minimal build with only the operators and types the bundled models use. Its arm64 library is 5.7 MB instead of 34 MB.
+- The app loads models in ORT format. The `.onnx` files are only the conversion source and are no longer packed into the APK; `SlipSplit/ort/` has the scripts and build settings.
+- The arm64 APK is about 73 MB, down from 101 MB. Recognition results and speed are unchanged.
+- The app no longer has network permission. ONNX Runtime's AAR added internet access and a telemetry start-up hook; both are now removed from the manifest.
+- The project is licensed under the Apache License 2.0.
+
 ## 1.1 — 2026-11-09
 
 ### Changed

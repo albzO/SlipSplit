@@ -41,7 +41,7 @@ Debug APK 按架构拆分，手机安装 `app-arm64-v8a-debug.apk`。
 | 语言 | Kotlin |
 | 界面 | Jetpack Compose、Material 3、Navigation Compose，单 Activity |
 | 状态 | 一个 `AndroidViewModel`；OCR 在单个工作线程上运行，模型只加载一次 |
-| 推理 | ONNX Runtime for Android |
+| 推理 | ONNX Runtime for Android，只含模型所用算子的精简构建（`SlipSplit/ort/`） |
 | 图像处理 | Android `Bitmap` 和 `Canvas`，加上一小段 Kotlin 几何代码求小票轮廓 |
 | 模型 | U²-Netp（小票分割）、UVDoc（拉平）、PP-OCR 检测和识别（Tiny / Small 两档） |
 
@@ -131,7 +131,7 @@ App 图标是 `res/drawable/ic_launcher_foreground.xml` 里的自适应图标：
 | `u2netp/` | `u2netp.onnx` | 见该目录 `README.txt` |
 | `ppocr/` | PP-OCR Tiny、Small 和 UVDoc 的 ONNX | 从现有设备或项目副本复制 |
 
-下载后核对各目录 `README.txt` 里的 SHA256。停用的 DewarpNet 模型保存在 App 之外的 `models/dewarpnet/`。
+下载后核对各目录 `README.txt` 里的 SHA256，再运行 `SlipSplit/ort/convert_models.ps1` 生成 App 实际加载的 ORT 格式副本，详见 `SlipSplit/ort/README.md`。停用的 DewarpNet 模型保存在 App 之外的 `models/dewarpnet/`。
 
 ## 测试
 
@@ -152,9 +152,13 @@ adb pull /sdcard/Android/data/local.ocrbridge/files/runs logs/phone-runs
 
 ## 隐私和样本
 
-- 识别和解析都在手机上完成。识别记录默认关闭；打开后记录只留在手机上，且只能通过设置里的导出带出手机。
+- 识别和解析都在手机上完成，App 也没有联网权限。识别记录默认关闭；打开后记录只留在手机上，且只能通过设置里的导出带出手机。
 - 分账历史（包括小票照片）存在 App 私有目录里，不会被导出。
 - `samples/` 含私人小票和 CC BY-NC 授权的样本，被 Git 忽略，不要随 App 分发；来源和授权见 `samples/sources.json`。
+
+## 许可证
+
+SlipSplit 以 [Apache License 2.0](LICENSE) 授权。第三方组件沿用各自的许可证：ONNX Runtime 为 MIT，U²-Netp 和 PP-OCR 为 Apache-2.0，UVDoc 以其项目的许可证为准。模型来源见各 assets 目录的 `README.txt`。
 
 ## 历史
 
