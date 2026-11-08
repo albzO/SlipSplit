@@ -98,6 +98,15 @@
     <string name="copied">已复制</string>
     <string name="finish">完成，回到首页</string>
 
+    <string name="history_swipe">上滑查看历史记录</string>
+    <string name="history_title">历史记录</string>
+    <string name="history_empty_title">还没有分账记录</string>
+    <string name="history_empty_body">每次在分账结果页点"完成"后，结果会保存在这里，只存在这台手机上。</string>
+    <string name="history_meta">%1$s · %2$d 项</string>
+    <string name="history_hint">点一条可继续编辑；长按可删除</string>
+    <string name="history_delete_title">删除这条记录？</string>
+    <string name="history_delete_body">记录会从手机上删除，无法恢复。</string>
+
     <string name="settings_language">界面语言</string>
     <string name="ui_language_system">跟随系统</string>
     <string name="settings_model">识别模型</string>
@@ -116,5 +125,5 @@
     <string name="export_runs">导出识别记录（zip）</string>
     <string name="export_empty">还没有可导出的识别记录</string>
     <string name="export_title">分享识别记录</string>
-    <string name="version_note">SlipSplit 0.2 · 识别全部在手机上完成</string>
+    <string name="version_note">SlipSplit 1.0 · 识别全部在手机上完成</string>
 </resources>

@@ -21,7 +21,8 @@ class AppSettings(context: Context) {
         get() = prefs.getString("ui_language", "system") ?: "system"
         set(value) = prefs.edit().putString("ui_language", value).apply()
 
+    /** Off unless turned on in Settings: records hold receipt photos. */
     var saveRuns: Boolean
-        get() = prefs.getBoolean("save_runs", true)
+        get() = prefs.getBoolean("save_runs", false)
         set(value) = prefs.edit().putBoolean("save_runs", value).apply()
 }

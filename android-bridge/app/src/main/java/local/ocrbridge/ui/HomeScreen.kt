@@ -20,6 +20,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -46,8 +60,11 @@ import local.ocrbridge.R
 import local.ocrbridge.ReceiptLanguage
 import java.io.File
 
+private val HISTORY_SWIPE = 60.dp
+private const val BOB_MS = 700
+
 @Composable
-fun HomeScreen(vm: AppViewModel, onPhoto: (Uri) -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(vm: AppViewModel, onPhoto: (Uri) -> Unit, onSettings: () -> Unit, onHistory: () -> Unit) {
     val context = LocalContext.current
     val captureUri = remember {
         val file = File(context.cacheDir, "photos/capture.jpg").apply { parentFile?.mkdirs() }
@@ -59,8 +76,20 @@ fun HomeScreen(vm: AppViewModel, onPhoto: (Uri) -> Unit, onSettings: () -> Unit)
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let(onPhoto)
     }
+    // An upward swipe anywhere on the start screen pulls the history up, once there is any.
+    val hasHistory = vm.history.isNotEmpty()
+    val swipe = if (!hasHistory) Modifier else Modifier.pointerInput(Unit) {
+        var travelled = 0f
+        detectVerticalDragGestures(
+            onDragStart = { travelled = 0f },
+            onDragEnd = { if (-travelled > HISTORY_SWIPE.toPx()) onHistory() },
+        ) { change, amount ->
+            travelled += amount
+            change.consume()
+        }
+    }
     Screen {
-        Column(Modifier.fillMaxSize().navigationBarsPadding()) {
+        Column(Modifier.fillMaxSize().navigationBarsPadding().then(swipe)) {
             Row(
                 Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -91,14 +120,36 @@ fun HomeScreen(vm: AppViewModel, onPhoto: (Uri) -> Unit, onSettings: () -> Unit)
                     ) { ButtonLabel(GalleryIcon, stringResource(R.string.gallery)) }
                 }
             }
+            AnimatedVisibility(hasHistory, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+                HistoryHandle(onHistory)
+            }
             Text(
                 stringResource(R.string.home_footer),
-                Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 20.dp),
                 fontSize = 12.sp,
                 color = Muted,
                 textAlign = TextAlign.Center,
             )
         }
+    }
+}
+
+/** A bobbing arrow that says history is one swipe up; tapping it works too. */
+@Composable
+private fun HistoryHandle(onHistory: () -> Unit) {
+    val bob by rememberInfiniteTransition(label = "bob").animateFloat(
+        0f, -6f, infiniteRepeatable(tween(BOB_MS), RepeatMode.Reverse), label = "bobOffset",
+    )
+    Column(
+        Modifier.fillMaxWidth().clickable(onClick = onHistory).padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            Icons.Filled.KeyboardArrowUp, null,
+            Modifier.size(28.dp).graphicsLayer { translationY = bob.dp.toPx() },
+            tint = Ink,
+        )
+        Text(stringResource(R.string.history_swipe), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Ink)
     }
 }
 

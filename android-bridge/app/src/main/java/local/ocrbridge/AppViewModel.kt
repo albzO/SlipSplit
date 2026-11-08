@@ -28,6 +28,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
@@ -122,8 +123,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var nextItemId = 0L
     private var nextPersonId = 0
 
+    private val historyStore = HistoryStore(application)
+    val history = mutableStateListOf<SavedBill>()
+    /** The saved bill being edited, so finishing updates it instead of adding another. */
+    private var historyId: String? = null
+
     init {
         resetPeople()
+        viewModelScope.launch {
+            val saved = withContext(Dispatchers.IO) { historyStore.load() }
+            history.clear()
+            history.addAll(saved)
+        }
         // Load native code while the user is still taking the picture.
         viewModelScope.launch(worker) { DocumentBoundaryDetector.prepare() }
     }
@@ -310,6 +321,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadBill(reading: Reading) {
         val receipt = reading.receipt
         this.reading = reading
+        historyId = null
         store = receipt.company
         printedAt = listOf(receipt.date, receipt.time).filter { it.isNotEmpty() }.joinToString(" ")
         items.clear()
@@ -426,8 +438,63 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         RunExport.pack(runs, File(app.cacheDir, "exports"), stamp)
     }
 
+    /** Keeps the finished split on the phone, replacing the record it was opened from. */
+    fun saveToHistory() {
+        if (items.isEmpty()) return
+        val existing = history.firstOrNull { it.id == historyId }
+        val bill = SavedBill(
+            id = existing?.id ?: UUID.randomUUID().toString(),
+            savedAt = existing?.savedAt ?: System.currentTimeMillis(),
+            store = store,
+            printedAt = printedAt,
+            adjustment = adjustment,
+            printedTotal = printedTotal,
+            people = people.toList(),
+            items = items.toList(),
+        )
+        history.removeAll { it.id == bill.id }
+        history.add(0, bill)
+        history.sortByDescending { it.savedAt }
+        // A bill opened from history already has its photo saved.
+        val photo = if (existing == null) reading?.photo else null
+        val lines = reading?.lines.orEmpty()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                historyStore.save(bill, photo, lines)
+            } catch (error: Exception) {
+                Log.w("History", "could not save bill", error)
+            }
+        }
+    }
+
+    /** Opens a saved split for editing; its photo loads in the background for picking text. */
+    fun openHistory(bill: SavedBill) {
+        finish()
+        historyId = bill.id
+        store = bill.store
+        printedAt = bill.printedAt
+        adjustment = bill.adjustment
+        printedTotal = bill.printedTotal
+        items.addAll(bill.items)
+        people.clear()
+        people.addAll(bill.people)
+        active = people.first().id
+        nextItemId = (bill.items.maxOfOrNull { it.id } ?: -1) + 1
+        nextPersonId = (bill.people.maxOfOrNull { it.id } ?: -1) + 1
+        viewModelScope.launch {
+            val saved = withContext(Dispatchers.IO) { historyStore.photo(bill.id) } ?: return@launch
+            if (historyId == bill.id) reading = Reading(saved.first, saved.second, Receipt(), false)
+        }
+    }
+
+    fun deleteHistory(id: String) {
+        history.removeAll { it.id == id }
+        viewModelScope.launch(Dispatchers.IO) { historyStore.delete(id) }
+    }
+
     /** Forgets the receipt once the split is done. */
     fun finish() {
+        historyId = null
         cancelRecognition()
         recognitionState.value = Recognition()
         reading = null

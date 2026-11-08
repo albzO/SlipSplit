@@ -12,6 +12,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import local.ocrbridge.ui.HistoryScreen
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
@@ -58,7 +61,18 @@ private fun SlipSplitApp(vm: AppViewModel) {
         enterTransition = forwardIn, exitTransition = forwardOut,
         popEnterTransition = backIn, popExitTransition = backOut,
     ) {
-        composable("home") {
+        composable(
+            "home",
+            // History rises from below the start screen, so the start screen moves up with it.
+            exitTransition = {
+                if (targetState.destination.route == "history") slideOutVertically(tween(SLIDE_MS)) { -it / 4 } + fadeOut(tween(SLIDE_MS))
+                else forwardOut()
+            },
+            popEnterTransition = {
+                if (initialState.destination.route == "history") slideInVertically(tween(SLIDE_MS)) { -it / 4 } + fadeIn(tween(SLIDE_MS))
+                else backIn()
+            },
+        ) {
             HomeScreen(
                 vm,
                 onPhoto = { uri ->
@@ -66,7 +80,18 @@ private fun SlipSplitApp(vm: AppViewModel) {
                     nav.navigate("crop")
                 },
                 onSettings = { nav.navigate("settings") },
+                onHistory = { nav.navigate("history") },
             )
+        }
+        composable(
+            "history",
+            enterTransition = { slideInVertically(tween(SLIDE_MS)) { it } + fadeIn(tween(SLIDE_MS)) },
+            popExitTransition = { slideOutVertically(tween(SLIDE_MS)) { it } + fadeOut(tween(SLIDE_MS)) },
+        ) {
+            HistoryScreen(vm, onBack = { nav.popBackStack() }, onOpen = { bill ->
+                vm.openHistory(bill)
+                nav.navigate("split")
+            })
         }
         composable("crop") {
             CropScreen(vm, onBack = { nav.popBackStack() }, onStart = { corners ->
@@ -88,9 +113,10 @@ private fun SlipSplitApp(vm: AppViewModel) {
         composable("split", enterTransition = { fadeIn(tween(420)) + scaleIn(tween(420), initialScale = 0.94f) }) {
             SplitScreen(
                 vm,
+                // Back to wherever the split was opened from: the start screen or history.
                 onLeave = {
                     vm.finish()
-                    nav.popBackStack("home", false)
+                    nav.popBackStack()
                 },
                 onPick = { picking -> nav.navigate(if (picking) "pick/pick" else "pick/view") },
                 onDone = { nav.navigate("summary") },
@@ -101,6 +127,7 @@ private fun SlipSplitApp(vm: AppViewModel) {
         }
         composable("summary") {
             SummaryScreen(vm, onBack = { nav.popBackStack() }, onFinish = {
+                vm.saveToHistory()
                 nav.popBackStack("home", false)
                 vm.finish()
             })

@@ -1,86 +1,161 @@
-# 小票 OCR
+# SlipSplit
 
-安卓分账 App 的离线小票识别，代码全部在 `android-bridge/`，语言是 Kotlin。
+**English** | [中文](README.zh.md)
 
-## 运行
+Version 1.0
 
-用 Android Studio 打开 `android-bridge/`，选好设备后点 Run。App 独立运行，不需要电脑或网络。
+SlipSplit is an Android app that splits a shop or restaurant receipt between people. You take a photo, the app reads every item on the phone itself, and you tap items to assign them to each person. Nothing is uploaded: detection, flattening, text recognition and parsing all run offline.
 
-命令行需要先把 `JAVA_HOME` 指向 JDK 21：
+The first target is Australian receipts, including bilingual Chinese and English ones from Asian supermarkets.
+
+## Features
+
+- Photo from the camera or gallery, with automatic corner detection and manual adjustment.
+- Paper flattening (UVDoc) and row levelling before reading.
+- Live recognition progress: text boxes appear as they are found and turn solid as each line is read.
+- Items grouped into name, details and price, whatever the receipt layout.
+- Misread digits corrected against the printed total, and shown to the user to check.
+- Split screen: tap an item to give it to the selected person; shared items are split evenly; unpicked items go to the last person.
+- Discounts, surcharges, tips and rounding shared by the same percentage.
+- Summary that can be copied as text or shared as an image.
+- History of finished splits: swipe up on the start screen to see them, tap one to edit it again, long-press to delete. The arrow and hint appear once there is a first split.
+- English and Chinese interface, following the system language unless set in Settings.
+
+## Build and run
+
+Open `android-bridge/` in Android Studio and press Run. The app runs on its own; it needs no computer or network.
+
+From the command line, point `JAVA_HOME` at JDK 21:
 
 ```powershell
 cd android-bridge
 ./gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
-## 流程
+Debug APKs are split by architecture; install `app-arm64-v8a-debug.apk` on a phone.
 
-1. 拍照或从相册选择。
-2. u2netp 分割出小票并求四角，失败时退回 OpenCV 找边；可手动微调或重新找边，都没有找到时保留整张照片。
-3. 四角贴紧小票，矫正时按选框向外扩展短边的 4%，再做曲面矫正，默认 UVDoc，可切换 DewarpNet。预览页可切换模型、关闭曲面矫正或返回调整四角。
-4. 确认后运行 PP-OCRv6。行弯曲或倾斜明显时校平图片并重读一次。
-5. 解析：先按金额把菜品区切成块，再细分每块内的菜名、规格和金额。
+## Technology
 
-流程细节见 [docs/photo-review.md](docs/photo-review.md)。
-
-## 代码
-
-| 文件 | 作用 |
+| Layer | Choice |
 | --- | --- |
-| `PaperBoundary.kt` | u2netp 分割和四角求解 |
-| `DocumentBoundaryDetector.kt` | OpenCV 找边，作为备选 |
-| `Perspective.kt` | 梯形矫正 |
-| `Dewarper.kt`、`DewarpNet.kt`、`BackwardMap.kt` | 曲面矫正 |
-| `PpOcr.kt` | ONNX Runtime 上的 PP-OCRv6 检测和识别 |
-| `Language.kt` | 自动 / 英文 / 中文；自动模式在中日韩字符占比低于 15% 时按英文处理 |
-| `TextLevel.kt` | 用 OCR 框拟合行斜率场并校平 |
-| `ReceiptParser.kt` | 解析规则，读取菜品、合计、店名和日期 |
-| `RunLog.kt` | 保存每次识别的照片、OCR 结果、四角和校平信息 |
-| `RunExport.kt` | 把历史记录打包成 zip，主界面“导出历史数据”用系统分享发出 |
+| Language | Kotlin |
+| UI | Jetpack Compose, Material 3, Navigation Compose, one activity |
+| State | One `AndroidViewModel`; OCR runs on a single worker thread so models load once |
+| Inference | ONNX Runtime for Android |
+| Image processing | OpenCV (edge fallback), Android `Bitmap` and `Canvas` |
+| Models | U²-Netp (paper mask), UVDoc (flattening), PP-OCR detection and recognition in Tiny, Small and Medium sizes |
 
-## 模型
+## Recognition architecture
 
-模型文件被 Git 忽略，放在 `android-bridge/app/src/main/assets/`：
+```mermaid
+flowchart TD
+    A[Photo] --> B[Find the paper<br/>U²-Netp mask, OpenCV edges as fallback]
+    B --> C[User adjusts corners]
+    C --> D[Perspective correction<br/>padded 4% on the short side]
+    D --> E[UVDoc flattening]
+    E --> F[PP-OCR detection<br/>all text boxes at once]
+    F --> G[PP-OCR recognition<br/>line by line, with progress]
+    G --> H{Rows slanted?}
+    H -- yes --> I[Level rows with a slope field<br/>read again]
+    H -- no --> J[Parse receipt]
+    I --> J
+    J --> K{Items add up<br/>to the total?}
+    K -- no --> L[Retry uncertain digits<br/>with second choices]
+    K -- yes --> M[Split screen]
+    L --> N[User checks fixes<br/>on the zoomed photo]
+    N --> M
+```
 
-| 目录 | 文件 | 来源 |
+### Steps
+
+1. **Paper.** U²-Netp marks the receipt as the main object and the app fits four corners to the mask. If the mask is unusable it falls back to OpenCV edges; if both fail the whole photo is kept. The user can drag the corners.
+2. **Straightening.** The corners are rectified with a perspective transform, padded slightly so the paper edge is not cut, then UVDoc removes curl. The output keeps the same size, so later boxes match it directly.
+3. **Detection.** PP-OCR detection finds every text box on the flattened photo. The screen draws them all as soon as detection ends.
+4. **Recognition.** Each box is cropped, deskewed and read. The recognizer reports every line as it finishes, so the progress bar counts real lines. For each digit it also keeps the likeliest other digit and its probability.
+5. **Language.** *Auto* reads freely and switches to an English-only character set when CJK characters are under 15% of the letters. *Chinese first* keeps every character, which mixed Chinese and English receipts need.
+6. **Levelling.** If the boxes show rows that bend or slope, a smooth slope field is fitted to them, the photo is levelled and read a second time. The second read is kept unless it loses a total the first one matched.
+
+## Data processing
+
+`ReceiptParser.kt` turns OCR lines into items and totals. The rules are structural and are never fitted to one receipt.
+
+1. **Rows.** Boxes are placed in row coordinates. Printed rows share a vanishing point in a photo, so one fit corrects tilt and perspective at once. Boxes on the same printed line are joined left to right.
+2. **Amount column.** Amounts aligned at the right edge form the price column. An amount in the middle of a line, such as `Normal Price: $3.48` or a unit price, is description, not a price. A table header such as `Description  Qty  Amount` fixes which column holds the amount.
+3. **Fields.** Labels classify the totals: subtotal, total, tax and GST included, service and surcharge, discount, rounding and payment. Item count lines end the item list.
+4. **Item blocks.** The first priced row decides the layout for the whole receipt:
+   - *Price first*: a name sits beside its amount, so every amount starts an item and the rows below it, up to the next amount, are its details.
+   - *Price last*: the name is printed above, so every amount closes the rows above it.
+   - A weight or count row such as `1.234 kg NET @ $3.99/kg` prices the name printed above it, in either layout.
+5. **Item discounts.** A negative amount right under an item is that item's discount. The printed total decides whether the item amount already has it taken off, so it is never counted twice.
+6. **Digit correction.** When the items miss the subtotal or total to the cent, the parser tries the recognizer's second-choice digits, fewest changes first and at most three. It keeps a fix only when the sum matches exactly and the fix is at least twice as likely as any other fix of the same size. The app then shows each fix on the photo for the user to check.
+7. **Reconciliation.** If items still exceed the total, the fewest rows whose removal makes it add up are moved aside as misreads, such as a subtotal read as an item.
+8. **Header.** The shop name is a legal name if one is printed, otherwise the tallest text in the header. The date and time come from the first plausible date.
+
+### Splitting
+
+`BillSplit.kt` works in cents:
+
+- An item picked by several people is shared equally; the first picker takes any odd cent.
+- An item nobody picked goes to the last person in the list.
+- Whole-bill charges are a share of the items: the gap between the printed subtotal and total when both were read, otherwise the service charge less the discount. Every person is scaled by the same share.
+- After scaling, leftover cents go to the largest remainders, so the shares always add up to the bill total.
+
+## Code map
+
+All app code is in `android-bridge/app/src/main/java/local/ocrbridge/`.
+
+| File | Purpose |
+| --- | --- |
+| `MainActivity.kt` | Activity, navigation and screen transitions |
+| `AppViewModel.kt` | State for one receipt from photo to split; runs the pipeline |
+| `AppSettings.kt` | Model, receipt language, interface language and record keeping |
+| `PaperBoundary.kt`, `DocumentBoundaryDetector.kt` | Paper corners from U²-Netp, with OpenCV as fallback |
+| `Perspective.kt`, `Dewarper.kt` | Perspective correction and UVDoc flattening |
+| `PpOcr.kt` | PP-OCR detection and recognition on ONNX Runtime, with progress and second-choice digits |
+| `TextLevel.kt` | Row slope field, levelling and the second read |
+| `Language.kt` | Receipt language choice and English detection |
+| `ReceiptParser.kt` | Items, totals, shop and date from OCR lines |
+| `BillSplit.kt` | Split arithmetic in cents |
+| `History.kt` | Finished splits, with their receipt photo and OCR lines, in the app's private storage |
+| `RunLog.kt`, `RunExport.kt` | Recognition records on the phone and their zip export |
+| `ui/` | Compose screens, the receipt canvas, the share image and localisation |
+
+The launcher icon is an adaptive icon in `res/drawable/ic_launcher_foreground.xml`: one receipt torn into a blue and an orange half, on a dark background.
+
+## Models
+
+Model files are ignored by Git and live in `android-bridge/app/src/main/assets/`:
+
+| Folder | Files | Source |
 | --- | --- | --- |
-| `u2netp/` | `u2netp.onnx` | 见该目录 `README.txt` |
-| `dewarpnet/` | `dewarp.tflite` | 见该目录 `README.txt` |
-| `ppocr/` | PP-OCRv6 和 UVDoc 的 ONNX | 仓库里没有下载说明，换机器时要从现有设备或项目副本复制 |
+| `u2netp/` | `u2netp.onnx` | See `README.txt` in that folder |
+| `ppocr/` | PP-OCR Tiny, Small and Medium, and UVDoc, as ONNX | Copy from an existing device or project copy |
 
-下载后核对各目录 `README.txt` 里的 SHA256。
+Check the SHA256 listed in each folder's `README.txt` after downloading. The retired DewarpNet model is kept outside the app in `models/dewarpnet/`.
 
-## 测试
+## Tests
 
 ```powershell
 cd android-bridge
 ./gradlew.bat :app:testDebugUnitTest
 ```
 
-`ReceiptParserTest` 用 `app/src/test/resources/receipts.json` 防止解析退步。该文件含样本 OCR 结果，被 Git 忽略，只存在本机；
-它是移除 Python 前生成的，解析规则有意改变时需要手动更新。
+- `ReceiptParserTest` replays OCR output from sample receipts against recorded results (`app/src/test/resources/receipts.json`, kept only on this machine because it holds private receipts), plus rules written as small cases.
+- `BillSplitTest` covers shared items, the last person, whole-bill shares and exact totals.
+- `RunReplay` parses records pulled from a phone: set `REPLAY_RUNS` to their folder and it writes `replay.txt` there.
 
-手机全流程测试会比较两种找边，并跑完矫正、OCR 和解析：
-
-```powershell
-./gradlew.bat :app:assembleDebug :app:assembleDebugAndroidTest -PsmokeRunner=local.ocrbridge.BoundarySmoke
-adb -s <serial> install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s <serial> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s <serial> shell am instrument -w local.ocrbridge.test/local.ocrbridge.BoundarySmoke
-```
-
-结果在 App 外部文件目录的 `boundary/`。拉回识别记录：
+Records are only kept while *Keep recognition records* is on in Settings; it is off by default. Pull them from a phone:
 
 ```bash
-adb -s <serial> pull /sdcard/Android/data/local.ocrbridge/files/runs samples/runs
+adb pull /sdcard/Android/data/local.ocrbridge/files/runs logs/phone-runs
 ```
 
-## 历史
+## Privacy and samples
 
-桌面 Python 比较台已移除，需要时可从提交 `442abde` 恢复。`bench_*.csv` 保留了当时的跑分。
-选型结论：PP-OCRv6 Small 的准确率和体积最均衡，Medium 准确率略高但占用内存多，ML Kit 拉丁文识别器读不了中日韩小票。
+- Recognition and parsing run on the phone. Recognition records are off by default; when turned on they stay on the phone and leave it only through the export in Settings.
+- Split history, including the receipt photo, stays in the app's private storage and is never exported.
+- `samples/` holds private receipts and CC BY-NC samples. It is ignored by Git and must not ship with the app; sources and licences are in `samples/sources.json`.
 
-## 样本
+## History
 
-- `samples/` 含私人小票和 CC BY-NC 授权的样本，被 Git 忽略，不要随 App 分发。
-- 来源和授权见 `samples/sources.json`。
+The desktop Python bench was removed; restore it from commit `442abde` if needed. `bench_*.csv` keep its scores. PP-OCR Small gave the best balance of accuracy and size, Medium is slightly more accurate but uses much more memory, and ML Kit's Latin recognizer cannot read CJK receipts.

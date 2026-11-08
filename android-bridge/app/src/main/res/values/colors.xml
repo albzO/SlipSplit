@@ -4,4 +4,5 @@
     <color name="ink">#16181C</color>
     <!-- Crop handles and outline. -->
     <color name="accent">#2563EB</color>
+    <color name="icon_background">#16181C</color>
 </resources>
