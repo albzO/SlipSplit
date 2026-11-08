@@ -2,7 +2,7 @@
 
 **English** | [中文](README.zh.md)
 
-Version 1.0
+Version 1.2 · [Changelog](CHANGELOG.md) · [Download](https://github.com/albzO/SlipSplit/releases/latest)
 
 SlipSplit is an Android app that splits a shop or restaurant receipt between people. You take a photo, the app reads every item on the phone itself, and you tap items to assign them to each person. Nothing is uploaded: detection, flattening, text recognition and parsing all run offline.
 
@@ -20,6 +20,10 @@ The first target is Australian receipts, including bilingual Chinese and English
 - Summary that can be copied as text or shared as an image.
 - History of finished splits: swipe up on the start screen to see them, tap one to edit it again, long-press to delete. The arrow and hint appear once there is a first split.
 - English and Chinese interface, following the system language unless set in Settings.
+
+## Install
+
+Download `SlipSplit-<version>-arm64-v8a.apk` from [Releases](https://github.com/albzO/SlipSplit/releases/latest) and open it on the phone. It needs Android 7.0 or later and is about 73 MB; the x86_64 APK is for emulators. Release APKs are signed with a debug key for now, so Android may warn before installing.
 
 ## Build and run
 
@@ -128,10 +132,10 @@ Model files are ignored by Git and live in `SlipSplit/app/src/main/assets/`:
 
 | Folder | Files | Source |
 | --- | --- | --- |
-| `u2netp/` | `u2netp.onnx` | See `README.txt` in that folder |
-| `ppocr/` | PP-OCR Tiny and Small, and UVDoc, as ONNX | Copy from an existing device or project copy |
+| `u2netp/` | `u2netp.onnx`, `u2netp.ort` | See `README.txt` in that folder |
+| `ppocr/` | PP-OCR Tiny and Small, and UVDoc: `det`/`rec` as `.onnx` and `.ort` | Copy from an existing device or project copy |
 
-Check the SHA256 listed in each folder's `README.txt` after downloading. Then run `SlipSplit/ort/convert_models.ps1` to write the ORT-format copies the app loads; see `SlipSplit/ort/README.md`. The retired DewarpNet model is kept outside the app in `models/dewarpnet/`.
+The app loads only the `.ort` files; the `.onnx` files are their source and stay out of the APK. Check the SHA256 listed in each folder's `README.txt` after downloading, then run `SlipSplit/ort/convert_models.ps1` to write the ORT-format copies the app loads; see `SlipSplit/ort/README.md`. The retired DewarpNet model is kept outside the app in `models/dewarpnet/`.
 
 ## Tests
 

@@ -2,7 +2,7 @@
 
 [English](README.md) | **中文**
 
-版本 1.0
+版本 1.2 · [更新日志](CHANGELOG.zh.md) · [下载](https://github.com/albzO/SlipSplit/releases/latest)
 
 SlipSplit 是一款按人分账的安卓 App。拍一张小票，App 在手机上读出每一项商品，你点一下就把商品记到某个人名下。照片不上传：找边、拉平、文字识别和解析全部离线完成。
 
@@ -20,6 +20,10 @@ SlipSplit 是一款按人分账的安卓 App。拍一张小票，App 在手机�
 - 汇总可以复制成文字，或分享成图片。
 - 分账历史：在首页上滑查看，点一条可以继续编辑，长按删除。保存第一条记录后，首页才会出现箭头和提示。
 - 中英文界面，默认跟随系统语言，也可以在设置里切换。
+
+## 安装
+
+从 [Releases](https://github.com/albzO/SlipSplit/releases/latest) 下载 `SlipSplit-<版本>-arm64-v8a.apk`，在手机上打开安装。需要 Android 7.0 及以上，约 73MB；x86_64 版用于模拟器。Release 包目前用调试密钥签名，安装时系统可能会提示风险。
 
 ## 构建和运行
 
@@ -128,10 +132,10 @@ App 图标是 `res/drawable/ic_launcher_foreground.xml` 里的自适应图标：
 
 | 目录 | 文件 | 来源 |
 | --- | --- | --- |
-| `u2netp/` | `u2netp.onnx` | 见该目录 `README.txt` |
-| `ppocr/` | PP-OCR Tiny、Small 和 UVDoc 的 ONNX | 从现有设备或项目副本复制 |
+| `u2netp/` | `u2netp.onnx`、`u2netp.ort` | 见该目录 `README.txt` |
+| `ppocr/` | PP-OCR Tiny、Small 和 UVDoc：`det`/`rec` 的 `.onnx` 和 `.ort` | 从现有设备或项目副本复制 |
 
-下载后核对各目录 `README.txt` 里的 SHA256，再运行 `SlipSplit/ort/convert_models.ps1` 生成 App 实际加载的 ORT 格式副本，详见 `SlipSplit/ort/README.md`。停用的 DewarpNet 模型保存在 App 之外的 `models/dewarpnet/`。
+App 只加载 `.ort`，`.onnx` 是它们的转换来源，不会打进 APK。下载后核对各目录 `README.txt` 里的 SHA256，再运行 `SlipSplit/ort/convert_models.ps1` 生成 App 实际加载的 ORT 格式副本，详见 `SlipSplit/ort/README.md`。停用的 DewarpNet 模型保存在 App 之外的 `models/dewarpnet/`。
 
 ## 测试
 
