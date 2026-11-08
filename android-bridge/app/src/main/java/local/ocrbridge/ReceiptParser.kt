@@ -25,6 +25,9 @@ data class ReceiptItem(
 ) {
     /** The OCR lines this item was read from. */
     var lines: List<OcrLine> = emptyList()
+
+    /** Discount printed under this item; the price already has it taken off. */
+    var discount: Double = 0.0
 }
 
 class Receipt(
@@ -77,6 +80,7 @@ private val TRAILING_AMOUNT = regex(
 private val LEADING_QTY = Regex("^$S*([0-9]{1,2})(?:$S*[xX×*]$S*|$S+)(?=[^\\s\\u3000])")
 private val MODIFIER = Regex("^$S*(?:-+$S|\\[\\*\\]$S*|\\+$S)")
 private val COUNT_START = Regex("^$S*[0-9]+$S*[xX×*]")
+private val TIMES_SIGN = Regex("(?<!\\p{L})[xX×](?!\\p{L})")
 private val ITEM_INDEX = Regex("^$S*[0-9]{1,3}$S*[.、)）]$S*(?=[^0-9\\s\\u3000])")
 private val TRAILING_CODE = Regex("$S+([0-9]{6,})$S*$")
 private val AMOUNT_HEADER = regex("^$S*(?:金额|金額|amount|amt\\.?|total)$S*:?$S*$")
@@ -88,7 +92,7 @@ private val SAVED_AMOUNT = regex("(?:优惠|優惠|折扣|${START}discount$END|$
 private val TRAILING_QTY = Regex("$S+[xX×*]$S*([0-9]{1,2})$S*$")
 private val DATE_OR_TIME = Regex("[0-9]{1,4}[-/.:][0-9]{1,2}[-/.:][0-9]{1,4}|[0-9]{1,2}:[0-9]{2}")
 private val QTY_IN_ROW = regex("(?:^|$S)(?:qty$S*)?([0-9]{1,2})$S*[xX×*@]")
-private val MEASURE_START = regex("^$S*(?:[0-9]+\\.[0-9]+|[0-9]+[A-Za-z]|qty$END)")
+private val MEASURE_START = regex("^$S*(?:[0-9]+\\.[0-9]+|[0-9]+[A-Za-z]{1,2}(?![A-Za-z])|qty$END)")
 private val HAS_WORD = Regex("\\p{L}{3,}|[一-鿿]")
 private val ITEM_MARKER = Regex("^[#^*~>\\s\\u3000]+")
 private val SKU_PREFIX = Regex("^([0-9]{5,})$S+(?=[^\\s\\u3000])")
@@ -115,6 +119,7 @@ private val TOTAL = regex(
 )
 private val NOT_MONEY = regex(
     "total$S*(?:item|qty|quantity)|item\\(?s\\)?$S*:|qty\\(?s\\)?$S*:|tax$S*invoice|" +
+        "item$S*count|count$S*of$S*items?|" +
         "${START}abn$END|${START}acn$END|数量|件数",
 )
 private val SHOP_HEADER = regex("tax$S*invoice|${START}abn$END|${START}acn$END")
@@ -502,17 +507,17 @@ private fun amountInColumn(row: ReceiptRow, column: AmountColumn): Pair<Double?,
 private fun namedPrice(row: ItemRow) =
     HAS_WORD.containsMatchIn(row.label.replace(COUNT_START, "")) && !MEASURE_START.containsMatchIn(row.label)
 
-/** One printer lays out items alike, so the whole receipt votes on where amounts sit. */
+/**
+ * One printer lays out items alike, so the first item decides for the receipt: a name beside
+ * its amount means each amount leads its item, otherwise each amount closes it. Header rows
+ * above the items carry no amount, so the first priced row is the first item's. Any text
+ * beside it counts as a name, as OCR may garble the name past reading.
+ */
 private fun amountComesLast(entries: List<ItemRow?>): Boolean {
-    val rows = entries.filterNotNull()
-    val priced = rows.filter { it.price != null }
-    if (priced.isEmpty()) return false
-    val named = priced.filter(::namedPrice)
-    val after = rows.subList(rows.indexOfLast { it.price != null } + 1, rows.size)
-    val leftover = after.count { !isModifier(it) }
-    val firstRow = named.count { hasStart(it.label) }
-    val otherRow = rows.count { it.price == null && hasStart(it.text) }
-    return 2 * (priced.size - named.size + otherRow) > named.size + 2 * firstRow + leftover
+    val first = entries.firstOrNull { it?.price != null } ?: return false
+    // A lone x is a times sign, as in `1 X 25.90`, not a name.
+    val label = first.label.replace(COUNT_START, "").replace(TIMES_SIGN, "")
+    return label.none(Char::isLetter) || MEASURE_START.containsMatchIn(label)
 }
 
 private fun Receipt.addItem(text: String, price: Double, spec: String, cells: List<OcrLine>) {
@@ -536,8 +541,13 @@ private fun Receipt.addItem(text: String, price: Double, spec: String, cells: Li
 
 private fun Receipt.addDetail(row: ItemRow) {
     val item = items.last()
-    item.spec = joinSpec(item.spec, clean(row.text))
     item.lines = item.lines + row.cells
+    // An amount row the OCR could not read leaves its name to the next row.
+    if (!HAS_WORD.containsMatchIn(item.name) && item.spec.isEmpty()) {
+        items[items.size - 1] = item.copy(name = clean(row.text)).also { it.lines = item.lines }
+    } else {
+        item.spec = joinSpec(item.spec, clean(row.text))
+    }
 }
 
 /** One item from the rows up to its amount: the first row starts it, the rest wrap or detail it. */
@@ -607,8 +617,21 @@ private fun Receipt.splitBlocks(entries: List<ItemRow?>) {
             anchored = true
         } else if (entry.price == null) {
             block.add(entry)
+        } else if (entry.price < 0) {
+            // Rows held before it belong to the item above only when amounts lead.
+            if (!last) {
+                flushDetails()
+                block = ArrayList()
+            }
+            items.lastOrNull()?.let {
+                it.discount += -entry.price
+                it.lines = it.lines + entry.cells
+            }
         } else {
-            if (!last && namedPrice(entry)) {
+            // When amounts lead, every amount starts an item, whether or not its name was read,
+            // except a weight or count row, which prices the name printed above it.
+            val detail = MEASURE_START.containsMatchIn(entry.label) || COUNT_START.containsMatchIn(entry.label)
+            if (!last && !(detail && block.isNotEmpty())) {
                 flushDetails()
                 addItem(clean(entry.label), entry.price, "", entry.cells)
             } else {
@@ -704,15 +727,22 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
             continue
         }
         if (amount < 0) {
-            result.discount = (result.discount ?: 0.0) + abs(amount)
-            result.fieldLines.addAll(entry.cells)
-            entries.add(null)
+            // Right under an item it discounts that item; anywhere else it sums the discounts.
+            if (entries.lastOrNull() != null) {
+                result.discount = (result.discount ?: 0.0) + abs(amount)
+                entries.add(ItemRow(row, label, amount, entry.right, entry.left, entry.cells))
+            } else {
+                result.setOnce(Field.DISCOUNT, abs(amount))
+                result.fieldLines.addAll(entry.cells)
+                entries.add(null)
+            }
             continue
         }
         entries.add(ItemRow(row, label, amount, entry.right, entry.left, entry.cells))
     }
     result.splitBlocks(entries)
     if (result.total == null) result.total = result.subtotal
+    applyItemDiscounts(result)
     reconcile(result)
     readHeader(rows, result)
     return result
@@ -745,6 +775,28 @@ private fun totalsAgree(
 fun sumMatches(receipt: Receipt): Boolean {
     if (receipt.items.isEmpty() || (receipt.total == null && receipt.subtotal == null)) return false
     return totalsAgree(receipt, receipt.items.map { it.price }, ::close)
+}
+
+/**
+ * Some printers take an item's discount off its amount, others print the full amount: when the
+ * amounts already add up to the total they are net, when they miss it by the discounts they are not.
+ */
+private fun applyItemDiscounts(receipt: Receipt) {
+    if (receipt.items.none { it.discount > 0 }) return
+    val printed = receipt.discount
+    receipt.discount = null
+    if (totalsAgree(receipt, receipt.items.map { it.price }, ::close)) return
+    val net = receipt.items.map { it.price - it.discount }
+    if (totalsAgree(receipt, net, ::close)) {
+        receipt.items = receipt.items.map { item ->
+            item.copy(price = Math.round((item.price - item.discount) * 100) / 100.0).also {
+                it.lines = item.lines
+                it.discount = item.discount
+            }
+        }.toMutableList()
+        return
+    }
+    receipt.discount = printed
 }
 
 /** Every way to pick `size` of `count` rows, in lexicographic order. */
