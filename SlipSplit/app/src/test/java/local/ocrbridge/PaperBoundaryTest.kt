@@ -41,4 +41,35 @@ class PaperBoundaryTest {
         val corners = floatArrayOf(10f, 10f, 40f, 10f, 40f, 40f, 10f, 40f)
         assertNull(PaperBoundary.quad(mask(corners, 600, 1200), 600, 1200))
     }
+
+    @Test
+    fun extendsTheSidesOverACurledCorner() {
+        // A receipt seen at an angle whose top-left corner curls back.
+        val corners = floatArrayOf(160f, 100f, 470f, 140f, 430f, 1100f, 110f, 1060f)
+        val full = mask(corners, 600, 1200)
+        val curled = FloatArray(full.size) { index ->
+            val x = (index % side + 0.5) * 600 / side
+            val y = (index / side + 0.5) * 1200 / side
+            if ((x - 160) + (y - 100) < 100) 0f else full[index]
+        }
+        val found = PaperBoundary.quad(curled, 600, 1200)
+        assertNotNull(found)
+        for (i in 0 until 8) assertEquals("coordinate $i", corners[i], found!![i], 12f)
+    }
+
+    @Test
+    fun leavesOutAHandTheMaskJoinsToThePaper() {
+        // A hand comes in from the photo's left edge and covers part of the paper's left side.
+        val corners = floatArrayOf(200f, 100f, 460f, 130f, 440f, 1100f, 220f, 1080f)
+        val paper = mask(corners, 600, 1200)
+        val joined = FloatArray(paper.size) { index ->
+            val x = (index % side + 0.5) * 600 / side
+            val y = (index / side + 0.5) * 1200 / side
+            val palm = (x / 280) * (x / 280) + ((y - 650) / 260) * ((y - 650) / 260) <= 1
+            if (palm) 1f else paper[index]
+        }
+        val found = PaperBoundary.quad(joined, 600, 1200)
+        assertNotNull(found)
+        for (i in 0 until 8) assertEquals("coordinate $i", corners[i], found!![i], 16f)
+    }
 }

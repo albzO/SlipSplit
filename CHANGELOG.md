@@ -2,6 +2,16 @@
 
 **English** | [中文](CHANGELOG.zh.md)
 
+## 1.3 — 2026-11-13
+
+### Changed
+- A negative row under an item is first taken off the amount above it; when that misses the total but the printed amounts add up, they are taken as already discounted and the negative row as a note. A printed total saving that equals the item discounts only sums them and is not taken off again.
+- The whole-bill adjustment is a fixed amount by default, split evenly among the people who took something. It is shared by what each person took only when the receipt prints a percentage or adds tax on top. This fixes item discounts being taken off a second time as a percentage, so the split no longer misses the total.
+- Tap the total or the adjustment card to edit the printed total, the adjustment and how it is shared.
+- Bills saved before 1.3 are converted when opened and split the same as before.
+- Corners are found from long straight lines in the outline: the quad whose sides run along the outline furthest wins. A hand holding the receipt that the mask joins to the paper no longer pulls a corner onto the hand. Outline cut by the photo's edge is not taken for a side.
+- Each side is fitted as a straight line along its middle, and each corner is where two sides meet. A curled, torn or thumbed corner no longer cuts across the paper; a side the hand hides keeps its place instead of following the fingers.
+
 ## 1.2 — 2026-11-09
 
 ### Changed
