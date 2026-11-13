@@ -1,8 +1,20 @@
-# SlipSplit
+<h1 align="center">SlipSplit</h1>
 
-[English](README.md) | **中文**
+<p align="center"><b>拍一张小票，点一下谁买了什么，精确到分地分账：安卓上完全离线。</b></p>
 
-版本 1.3 · [更新日志](CHANGELOG.zh.md) · [下载](https://github.com/albzO/SlipSplit/releases/latest)
+<p align="center">
+  <a href="https://github.com/albzO/SlipSplit/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/albzO/SlipSplit?color=2f81f7"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/albzO/SlipSplit?color=orange"></a>
+  <img alt="Android 7.0+" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white">
+  <img alt="ONNX Runtime" src="https://img.shields.io/badge/ONNX%20Runtime-on--device-005CED?logo=onnx&logoColor=white">
+  <img alt="Offline" src="https://img.shields.io/badge/%E5%AE%8C%E5%85%A8%E7%A6%BB%E7%BA%BF-success">
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> · <b>中文</b><br>
+  <a href="https://github.com/albzO/SlipSplit/releases/latest">下载 APK</a> · <a href="CHANGELOG.zh.md">更新日志</a> · <a href="#识别架构">工作原理</a>
+</p>
 
 SlipSplit 是一款按人分账的安卓 App。拍一张小票，App 在手机上读出每一项商品，你点一下就把商品记到某个人名下。照片不上传：找边、拉平、文字识别和解析全部离线完成。
 
@@ -73,6 +85,9 @@ flowchart TD
 
 ### 步骤
 
+<details>
+<summary>展开每一步</summary>
+
 1. **找小票。** U²-Netp 把小票当作画面主体分割出来，App 按分割结果求四个角。分割结果常把握着小票的手也包进来，所以四角按直线来定：候选四边形一部分来自把凸轮廓化简成四个点，一部分来自轮廓里的长直线两两组合；选四条边贴着轮廓走得最长、悬空最少的那个。手指只是横穿过边、贴着的距离很短，不算数；贴着照片边缘的轮廓也不当作纸边。之后每条边用中段的轮廓重新拟合成直线，取相邻两边的交点作为角点，卷角、缺角也能框进去；被手挡住的边保持原样。求不出四边形时保留整张照片。用户可以拖动四角。
 2. **矫正。** 按四角做梯形矫正，四周略微外扩以免切掉纸边，再用 UVDoc 去掉纸张弯曲。输出尺寸不变，后续文字框可以直接对上。
 3. **检测。** PP-OCR 检测在拉平后的照片上找出所有文字框，检测一结束界面就把它们全部画出来。
@@ -80,9 +95,14 @@ flowchart TD
 5. **语言。** *自动* 先按全部字符读取，中日韩字符少于字母的 15% 时改用只含英文的字符集。*中文优先* 保留全部字符，中英混合的小票需要选这个。
 6. **校平。** 如果文字框显示行是弯的或斜的，就按这些框拟合一个平滑的斜率场，把照片校平后再读一遍。默认采用第二遍的结果，除非它丢掉了第一遍已经对上的总额。
 
+</details>
+
 ## 数据处理
 
 `ReceiptParser.kt` 把 OCR 行变成商品和合计。规则全部基于结构，不针对任何一张小票。
+
+<details>
+<summary>展开解析规则</summary>
 
 1. **行。** 文字框换算到行坐标。照片里同一张小票的打印行交于同一个消失点，所以一次拟合就能同时修正倾斜和透视。同一打印行上的框从左到右拼接。
 2. **金额列。** 靠右对齐的金额组成价格列。行中间的金额，比如 `Normal Price: $3.48` 或单价，是说明，不是价格。如果有 `Description  Qty  Amount` 这样的表头，就按表头确定哪一列是金额。
@@ -95,6 +115,8 @@ flowchart TD
 6. **数字纠正。** 商品合计和小计或总额差了哪怕一分钱时，解析会尝试识别器给出的第二选择数字：先改最少的位数，最多三位。只有合计精确对上，并且这种改法的可能性至少是同样位数其他改法的两倍，才会采用。App 随后把每处纠正标在照片上让用户核实。
 7. **对账。** 如果商品合计仍然超过总额，就找出最少的几行，去掉后合计正好对上，把它们当作误读移到一边，比如被读成商品的小计。
 8. **表头。** 店名优先取印出来的公司全称，否则取表头里字最大的那段文字。日期和时间取第一个合理的日期。
+
+</details>
 
 ### 分账计算
 
@@ -109,6 +131,9 @@ flowchart TD
 ## 代码结构
 
 App 代码全部在 `SlipSplit/app/src/main/java/local/ocrbridge/`。
+
+<details>
+<summary>展开文件列表</summary>
 
 | 文件 | 作用 |
 | --- | --- |
@@ -127,6 +152,8 @@ App 代码全部在 `SlipSplit/app/src/main/java/local/ocrbridge/`。
 | `ui/` | Compose 界面、小票画布、分享图片和多语言 |
 
 App 图标是 `res/drawable/ic_launcher_foreground.xml` 里的自适应图标：深色底上一张撕成蓝、橙两半的小票。
+
+</details>
 
 ## 模型
 

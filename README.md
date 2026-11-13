@@ -1,8 +1,20 @@
-# SlipSplit
+<h1 align="center">SlipSplit</h1>
 
-**English** | [中文](README.zh.md)
+<p align="center"><b>Snap a receipt, tap who had what, split it to the cent: fully offline on Android.</b></p>
 
-Version 1.3 · [Changelog](CHANGELOG.md) · [Download](https://github.com/albzO/SlipSplit/releases/latest)
+<p align="center">
+  <a href="https://github.com/albzO/SlipSplit/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/albzO/SlipSplit?color=2f81f7"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/albzO/SlipSplit?color=orange"></a>
+  <img alt="Android 7.0+" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white">
+  <img alt="ONNX Runtime" src="https://img.shields.io/badge/ONNX%20Runtime-on--device-005CED?logo=onnx&logoColor=white">
+  <img alt="Offline" src="https://img.shields.io/badge/100%25%20offline-success">
+</p>
+
+<p align="center">
+  <b>English</b> · <a href="README.zh.md">中文</a><br>
+  <a href="https://github.com/albzO/SlipSplit/releases/latest">Download APK</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="#recognition-architecture">How it works</a>
+</p>
 
 SlipSplit is an Android app that splits a shop or restaurant receipt between people. You take a photo, the app reads every item on the phone itself, and you tap items to assign them to each person. Nothing is uploaded: detection, flattening, text recognition and parsing all run offline.
 
@@ -73,6 +85,9 @@ flowchart TD
 
 ### Steps
 
+<details>
+<summary>Each step in detail</summary>
+
 1. **Paper.** U²-Netp marks the receipt as the main object and the app fits four corners to the mask. The mask often takes in the hand holding the paper, so the corners come from straight lines: candidate quads are the convex outline reduced to four points and quads built from the long straight lines in the outline, and the one whose sides run along the outline furthest, less where they cross no outline, is kept. Fingers crossing a side touch it only briefly and do not count, and outline along the photo's edge is not taken for a side. Each side is then refitted to the straight middle of its outline and the corners put where sides meet, so a curled or torn corner is covered; a side the hand hides keeps its place. If no quad fits, the whole photo is kept. The user can drag the corners.
 2. **Straightening.** The corners are rectified with a perspective transform, padded slightly so the paper edge is not cut, then UVDoc removes curl. The output keeps the same size, so later boxes match it directly.
 3. **Detection.** PP-OCR detection finds every text box on the flattened photo. The screen draws them all as soon as detection ends.
@@ -80,9 +95,14 @@ flowchart TD
 5. **Language.** *Auto* reads freely and switches to an English-only character set when CJK characters are under 15% of the letters. *Chinese first* keeps every character, which mixed Chinese and English receipts need.
 6. **Levelling.** If the boxes show rows that bend or slope, a smooth slope field is fitted to them, the photo is levelled and read a second time. The second read is kept unless it loses a total the first one matched.
 
+</details>
+
 ## Data processing
 
 `ReceiptParser.kt` turns OCR lines into items and totals. The rules are structural and are never fitted to one receipt.
+
+<details>
+<summary>Parsing rules, step by step</summary>
 
 1. **Rows.** Boxes are placed in row coordinates. Printed rows share a vanishing point in a photo, so one fit corrects tilt and perspective at once. Boxes on the same printed line are joined left to right.
 2. **Amount column.** Amounts aligned at the right edge form the price column. An amount in the middle of a line, such as `Normal Price: $3.48` or a unit price, is description, not a price. A table header such as `Description  Qty  Amount` fixes which column holds the amount.
@@ -95,6 +115,8 @@ flowchart TD
 6. **Digit correction.** When the items miss the subtotal or total to the cent, the parser tries the recognizer's second-choice digits, fewest changes first and at most three. It keeps a fix only when the sum matches exactly and the fix is at least twice as likely as any other fix of the same size. The app then shows each fix on the photo for the user to check.
 7. **Reconciliation.** If items still exceed the total, the fewest rows whose removal makes it add up are moved aside as misreads, such as a subtotal read as an item.
 8. **Header.** The shop name is a legal name if one is printed, otherwise the tallest text in the header. The date and time come from the first plausible date.
+
+</details>
 
 ### Splitting
 
@@ -109,6 +131,9 @@ flowchart TD
 ## Code map
 
 All app code is in `SlipSplit/app/src/main/java/local/ocrbridge/`.
+
+<details>
+<summary>File by file</summary>
 
 | File | Purpose |
 | --- | --- |
@@ -127,6 +152,8 @@ All app code is in `SlipSplit/app/src/main/java/local/ocrbridge/`.
 | `ui/` | Compose screens, the receipt canvas, the share image and localisation |
 
 The launcher icon is an adaptive icon in `res/drawable/ic_launcher_foreground.xml`: one receipt torn into a blue and an orange half, on a dark background.
+
+</details>
 
 ## Models
 

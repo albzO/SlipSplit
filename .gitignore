@@ -27,3 +27,6 @@ logs/
 # Python environments from the retired desktop bench.
 .venv*/
 __pycache__/
+
+# graphify knowledge graph output.
+graphify-out/
