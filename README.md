@@ -67,6 +67,8 @@ Debug APKs are split by architecture; install `app-arm64-v8a-debug.apk` on a pho
 
 ## Technology
 
+<p align="center"><img src="https://skillicons.dev/icons?i=kotlin,androidstudio,gradle,powershell,github" alt="Kotlin, Android Studio, Gradle, PowerShell, GitHub"></p>
+
 | Layer | Choice |
 | --- | --- |
 | Language | Kotlin |

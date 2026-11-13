@@ -67,6 +67,8 @@ Debug APK 按架构拆分，手机安装 `app-arm64-v8a-debug.apk`。
 
 ## 技术栈
 
+<p align="center"><img src="https://skillicons.dev/icons?i=kotlin,androidstudio,gradle,powershell,github" alt="Kotlin, Android Studio, Gradle, PowerShell, GitHub"></p>
+
 | 层 | 选择 |
 | --- | --- |
 | 语言 | Kotlin |
