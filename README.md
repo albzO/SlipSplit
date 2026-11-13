@@ -2,7 +2,7 @@
 
 **English** | [中文](README.zh.md)
 
-Version 1.2 · [Changelog](CHANGELOG.md) · [Download](https://github.com/albzO/SlipSplit/releases/latest)
+Version 1.3 · [Changelog](CHANGELOG.md) · [Download](https://github.com/albzO/SlipSplit/releases/latest)
 
 SlipSplit is an Android app that splits a shop or restaurant receipt between people. You take a photo, the app reads every item on the phone itself, and you tap items to assign them to each person. Nothing is uploaded: detection, flattening, text recognition and parsing all run offline.
 
@@ -10,13 +10,14 @@ The first target is Australian receipts, including bilingual Chinese and English
 
 ## Features
 
-- Photo from the camera or gallery, with automatic corner detection and manual adjustment.
+- Photo from the camera or gallery, with automatic corner detection and manual adjustment. The frame stays on the paper when a hand holds it, and covers curled corners.
 - Paper flattening (UVDoc) and row levelling before reading.
 - Live recognition progress: text boxes appear as they are found and turn solid as each line is read.
 - Items grouped into name, details and price, whatever the receipt layout.
 - Misread digits corrected against the printed total, and shown to the user to check.
 - Split screen: tap an item to give it to the selected person; shared items are split evenly; unpicked items go to the last person.
-- Discounts, surcharges, tips and rounding shared by the same percentage.
+- Item discounts taken off once, whether the receipt prints the amount before or after them.
+- Whole-bill discounts, surcharges, tips and rounding as a fixed amount split evenly, or by percentage when the receipt prints one. Tap the total to correct it or the adjustment.
 - Summary that can be copied as text or shared as an image.
 - History of finished splits: swipe up on the start screen to see them, tap one to edit it again, long-press to delete. The arrow and hint appear once there is a first split.
 - English and Chinese interface, following the system language unless set in Settings.
@@ -72,7 +73,7 @@ flowchart TD
 
 ### Steps
 
-1. **Paper.** U²-Netp marks the receipt as the main object and the app fits four corners to the mask. The mask's largest region is traced, its convex outline is reduced to candidate quads, and the one that best overlaps the mask is kept. If no quad fits, the whole photo is kept. The user can drag the corners.
+1. **Paper.** U²-Netp marks the receipt as the main object and the app fits four corners to the mask. The mask often takes in the hand holding the paper, so the corners come from straight lines: candidate quads are the convex outline reduced to four points and quads built from the long straight lines in the outline, and the one whose sides run along the outline furthest, less where they cross no outline, is kept. Fingers crossing a side touch it only briefly and do not count, and outline along the photo's edge is not taken for a side. Each side is then refitted to the straight middle of its outline and the corners put where sides meet, so a curled or torn corner is covered; a side the hand hides keeps its place. If no quad fits, the whole photo is kept. The user can drag the corners.
 2. **Straightening.** The corners are rectified with a perspective transform, padded slightly so the paper edge is not cut, then UVDoc removes curl. The output keeps the same size, so later boxes match it directly.
 3. **Detection.** PP-OCR detection finds every text box on the flattened photo. The screen draws them all as soon as detection ends.
 4. **Recognition.** Each box is cropped, deskewed and read. The recognizer reports every line as it finishes, so the progress bar counts real lines. For each digit it also keeps the likeliest other digit and its probability.
@@ -90,7 +91,7 @@ flowchart TD
    - *Price first*: a name sits beside its amount, so every amount starts an item and the rows below it, up to the next amount, are its details.
    - *Price last*: the name is printed above, so every amount closes the rows above it.
    - A weight or count row such as `1.234 kg NET @ $3.99/kg` prices the name printed above it, in either layout.
-5. **Item discounts.** A negative amount right under an item is that item's discount. The printed total decides whether the item amount already has it taken off, so it is never counted twice.
+5. **Item discounts.** A negative amount right under an item is that item's discount, taken off the amount above it unless only the printed amounts add up to the total, which shows they are already discounted. When neither adds up, the choice waits until misread rows are dropped. A printed saving equal to the item discounts only sums them and is not taken off again.
 6. **Digit correction.** When the items miss the subtotal or total to the cent, the parser tries the recognizer's second-choice digits, fewest changes first and at most three. It keeps a fix only when the sum matches exactly and the fix is at least twice as likely as any other fix of the same size. The app then shows each fix on the photo for the user to check.
 7. **Reconciliation.** If items still exceed the total, the fewest rows whose removal makes it add up are moved aside as misreads, such as a subtotal read as an item.
 8. **Header.** The shop name is a legal name if one is printed, otherwise the tallest text in the header. The date and time come from the first plausible date.
@@ -101,8 +102,9 @@ flowchart TD
 
 - An item picked by several people is shared equally; the first picker takes any odd cent.
 - An item nobody picked goes to the last person in the list.
-- Whole-bill charges are a share of the items: the gap between the printed subtotal and total when both were read, otherwise the service charge less the discount. Every person is scaled by the same share.
-- After scaling, leftover cents go to the largest remainders, so the shares always add up to the bill total.
+- The whole-bill adjustment is what the printed fields leave on top of the items: nothing when the items already add up to the total, the gap to the total when a subtotal matches the items, otherwise the service charge less the discount, plus tax when it is added on top.
+- The adjustment is a fixed amount split evenly among the people who took something. It is shared by what each person took only when the receipt prints a percentage on a discount or charge row, or adds tax on top. The user can edit the total, the adjustment and the percentage switch.
+- Leftover cents go to the largest remainders, so the shares always add up to the items plus the adjustment.
 
 ## Code map
 
@@ -149,8 +151,10 @@ cd SlipSplit
 ```
 
 - `ReceiptParserTest` replays OCR output from sample receipts against recorded results (`app/src/test/resources/receipts.json`, kept only on this machine because it holds private receipts), plus rules written as small cases.
-- `BillSplitTest` covers shared items, the last person, whole-bill shares and exact totals.
+- `BillSplitTest` covers shared items, the last person, fixed and percentage adjustments and exact totals.
+- `PaperBoundaryTest` covers corners from synthetic masks, including a curled corner and a hand joined to the paper.
 - `RunReplay` parses records pulled from a phone: set `REPLAY_RUNS` to their folder and it writes `replay.txt` there.
+- `BoundaryReplay` finds corners for saved masks: set `BOUNDARY_RUNS` to a folder of runs, each with the U²-Netp output as `mask.f32` (320×320 little-endian floats) and the photo size in `size.txt`, and it writes `boundary.txt` there.
 
 Records are only kept while *Keep recognition records* is on in Settings; it is off by default. Pull them from a phone:
 
