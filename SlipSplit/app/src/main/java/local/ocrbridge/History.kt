@@ -15,7 +15,7 @@ class SavedBill(
     val savedAt: Long,
     val store: String,
     val printedAt: String,
-    val adjustment: Double,
+    val adjustment: Adjustment,
     val printedTotal: Long?,
     val people: List<Person>,
     val items: List<BillItem>,
@@ -72,7 +72,8 @@ class HistoryStore(context: Context) {
         .put("savedAt", bill.savedAt)
         .put("store", bill.store)
         .put("printedAt", bill.printedAt)
-        .put("adjustment", bill.adjustment)
+        .put("adjustmentCents", bill.adjustment.cents)
+        .put("proportional", bill.adjustment.proportional)
         .put("printedTotal", bill.printedTotal ?: JSONObject.NULL)
         .put("people", JSONArray(bill.people.map { JSONObject().put("id", it.id).put("name", it.name) }))
         .put("items", JSONArray(bill.items.map { item ->
@@ -83,25 +84,33 @@ class HistoryStore(context: Context) {
     private fun read(json: JSONObject): SavedBill {
         val people = json.getJSONArray("people")
         val items = json.getJSONArray("items")
+        val billItems = (0 until items.length()).map {
+            val item = items.getJSONObject(it)
+            val pickers = item.getJSONArray("pickers")
+            BillItem(
+                item.getLong("id"), item.getString("name"), item.getLong("cents"), item.optString("note"),
+                (0 until pickers.length()).map(pickers::getInt),
+            )
+        }
+        // Bills saved before 1.3 kept the adjustment as a share of the items.
+        val adjustment = if (json.has("adjustmentCents")) {
+            Adjustment(json.getLong("adjustmentCents"), json.optBoolean("proportional"))
+        } else {
+            val share = json.optDouble("adjustment", 0.0)
+            Adjustment(Math.round(billItems.sumOf { it.cents } * share), proportional = true)
+        }
         return SavedBill(
             id = json.getString("id"),
             savedAt = json.getLong("savedAt"),
             store = json.optString("store"),
             printedAt = json.optString("printedAt"),
-            adjustment = json.optDouble("adjustment", 0.0),
+            adjustment = adjustment,
             printedTotal = if (json.isNull("printedTotal")) null else json.getLong("printedTotal"),
             people = (0 until people.length()).map {
                 val person = people.getJSONObject(it)
                 Person(person.getInt("id"), person.getString("name"))
             },
-            items = (0 until items.length()).map {
-                val item = items.getJSONObject(it)
-                val pickers = item.getJSONArray("pickers")
-                BillItem(
-                    item.getLong("id"), item.getString("name"), item.getLong("cents"), item.optString("note"),
-                    (0 until pickers.length()).map(pickers::getInt),
-                )
-            },
+            items = billItems,
         )
     }
 

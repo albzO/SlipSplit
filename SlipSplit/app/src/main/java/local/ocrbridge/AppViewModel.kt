@@ -6,7 +6,6 @@ import android.graphics.RectF
 import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -114,7 +113,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val items = mutableStateListOf<BillItem>()
     val people = mutableStateListOf<Person>()
     var active by mutableIntStateOf(0)
-    var adjustment by mutableDoubleStateOf(0.0)
+    var adjustment by mutableStateOf(Adjustment())
         private set
     var printedTotal by mutableStateOf<Long?>(null)
         private set
@@ -398,6 +397,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         draft = null
         return true
+    }
+
+    /** Sets the printed total and the whole-bill adjustment by hand, for when either was misread. */
+    fun setTotals(total: Long?, adjustment: Adjustment) {
+        printedTotal = total
+        this.adjustment = adjustment
     }
 
     fun deleteDraftItem() {

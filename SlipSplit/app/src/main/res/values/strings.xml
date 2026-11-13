@@ -57,8 +57,15 @@
     <string name="review_title">OCR misread detected: corrected %1$d price(s) to match the total, please check</string>
     <string name="review_hint">Compare with the red box on the receipt. If it is wrong, long-press the item in the split to fix it.</string>
     <string name="review_confirm">Start splitting</string>
-    <string name="adjustment_title">Whole-bill adjustment, shared by the same percentage</string>
     <string name="adjustment_name">Discounts, surcharges, tips and rounding</string>
+    <string name="adjustment_proportional">Shared by what each person took</string>
+    <string name="adjustment_equal">Fixed amount, split evenly among people with items</string>
+    <string name="edit_totals">Edit total and adjustment</string>
+    <string name="items_sum">Items add up to %1$s</string>
+    <string name="adjustment_field">Whole-bill adjustment (discount is negative)</string>
+    <string name="adjustment_field_hint">-5.00 is a discount, 2.00 a surcharge; changing the total fills in the gap</string>
+    <string name="adjustment_by_percent">Share by percentage</string>
+    <string name="adjustment_by_percent_hint">Turn on when the receipt shows a percentage discount or surcharge</string>
     <string name="add_item">Add an item</string>
     <string name="edit_item">Edit item</string>
     <string name="item_name">Name</string>
@@ -126,5 +133,5 @@
     <string name="export_runs">Export records (zip)</string>
     <string name="export_empty">No records to export yet</string>
     <string name="export_title">Share records</string>
-    <string name="version_note">SlipSplit 1.2 · everything is read on this phone</string>
+    <string name="version_note">SlipSplit 1.3 · everything is read on this phone</string>
 </resources>

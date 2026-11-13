@@ -12,6 +12,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -63,6 +65,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import local.ocrbridge.Adjustment
 import local.ocrbridge.AppViewModel
 import local.ocrbridge.BillItem
 import local.ocrbridge.MAX_PEOPLE
@@ -70,6 +73,7 @@ import local.ocrbridge.Person
 import local.ocrbridge.R
 import local.ocrbridge.owners
 import local.ocrbridge.splitBill
+import local.ocrbridge.toCents
 import java.util.Locale
 import kotlin.math.abs
 
@@ -89,6 +93,7 @@ fun SplitScreen(vm: AppViewModel, onLeave: () -> Unit, onPick: (Boolean) -> Unit
     val last = vm.people.last()
     var leaving by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<Person?>(null) }
+    var editingTotals by remember { mutableStateOf(false) }
     BackHandler { leaving = true }
 
     Screen {
@@ -110,7 +115,7 @@ fun SplitScreen(vm: AppViewModel, onLeave: () -> Unit, onPick: (Boolean) -> Unit
                 }
                 TextButton(onClick = { onPick(false) }) { Text(stringResource(R.string.view_receipt), color = Ink) }
             }
-            TotalCard(split.itemsCents, split.totalCents, vm.printedTotal)
+            TotalCard(split.itemsCents, split.totalCents, vm.printedTotal, onClick = { editingTotals = true })
             Text(
                 stringResource(R.string.split_hint, activePerson.name),
                 Modifier.padding(start = Gutter + CardPadding, end = Gutter, top = 12.dp, bottom = 8.dp),
@@ -130,7 +135,7 @@ fun SplitScreen(vm: AppViewModel, onLeave: () -> Unit, onPick: (Boolean) -> Unit
                     )
                 }
                 if (split.totalCents != split.itemsCents) {
-                    item(key = "adjustment") { AdjustmentCard(split.totalCents - split.itemsCents, vm.adjustment) }
+                    item(key = "adjustment") { AdjustmentCard(vm.adjustment, split.itemsCents, onClick = { editingTotals = true }) }
                 }
                 item(key = "add") {
                     Button(
@@ -157,6 +162,7 @@ fun SplitScreen(vm: AppViewModel, onLeave: () -> Unit, onPick: (Boolean) -> Unit
     }
 
     vm.draft?.let { EditSheet(vm, onPick = { onPick(true) }) }
+    if (editingTotals) TotalsSheet(vm, split.itemsCents, onClose = { editingTotals = false })
     removing?.let { person ->
         AlertDialog(
             onDismissRequest = { removing = null },
@@ -183,7 +189,7 @@ fun SplitScreen(vm: AppViewModel, onLeave: () -> Unit, onPick: (Boolean) -> Unit
 
 /** The printed total, laid out like an item row so its amount lines up with the prices below. */
 @Composable
-private fun TotalCard(items: Long, total: Long, printed: Long?) {
+private fun TotalCard(items: Long, total: Long, printed: Long?, onClick: () -> Unit) {
     val (note, color) = when {
         printed == null -> stringResource(R.string.total_no_total) to Warn
         abs(total - printed) <= 1 && items == total -> stringResource(R.string.total_match) to Muted
@@ -193,7 +199,7 @@ private fun TotalCard(items: Long, total: Long, printed: Long?) {
     }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 4.dp).clip(RoundedCornerShape(14.dp))
-            .background(Surface).padding(horizontal = CardPadding, vertical = 12.dp),
+            .background(Surface).clickable(onClick = onClick).padding(horizontal = CardPadding, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -279,20 +285,89 @@ private fun Dot(person: Person, quiet: Boolean, ring: Color, modifier: Modifier 
 }
 
 @Composable
-private fun AdjustmentCard(cents: Long, share: Double) {
+private fun AdjustmentCard(adjustment: Adjustment, items: Long, onClick: () -> Unit) {
+    val how = if (adjustment.proportional && items > 0) {
+        stringResource(R.string.adjustment_proportional) + " · " +
+            String.format(Locale.US, "%+.2f%%", adjustment.cents * 100.0 / items)
+    } else {
+        stringResource(R.string.adjustment_equal)
+    }
     Column(
         Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(14.dp)).background(Surface)
-            .padding(horizontal = CardPadding, vertical = 12.dp),
+            .clickable(onClick = onClick).padding(horizontal = CardPadding, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.adjustment_name), Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Ink)
-            Text(signedMoney(cents), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(signedMoney(adjustment.cents), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
         }
-        Text(
-            stringResource(R.string.adjustment_title) + " · " + String.format(Locale.US, "%+.2f%%", share * 100),
-            fontSize = 12.sp, color = Muted,
-        )
+        Text(how, fontSize = 12.sp, color = Muted)
+    }
+}
+
+private fun parseMoney(text: String): Double? =
+    text.trim().replace("$", "").replace(" ", "").replace(',', '.').toDoubleOrNull()
+
+private fun plain(cents: Long) = String.format(Locale.US, "%.2f", cents / 100.0)
+
+/** Edits the printed total and the whole-bill adjustment; a new total sets the adjustment to the gap. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TotalsSheet(vm: AppViewModel, items: Long, onClose: () -> Unit) {
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var total by remember { mutableStateOf(vm.printedTotal?.let(::plain).orEmpty()) }
+    var adjustment by remember { mutableStateOf(plain(vm.adjustment.cents)) }
+    var proportional by remember { mutableStateOf(vm.adjustment.proportional) }
+    var invalid by remember { mutableStateOf(false) }
+    ModalBottomSheet(onDismissRequest = onClose, sheetState = sheet, containerColor = Surface) {
+        Column(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(stringResource(R.string.edit_totals), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink)
+            Text(stringResource(R.string.items_sum, money(items)), fontSize = 13.sp, color = Muted)
+            OutlinedTextField(
+                total,
+                { text ->
+                    total = text
+                    invalid = false
+                    parseMoney(text)?.let { adjustment = plain(toCents(it) - items) }
+                },
+                Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.total_title)) }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            )
+            OutlinedTextField(
+                adjustment, { adjustment = it; invalid = false }, Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.adjustment_field)) }, singleLine = true, isError = invalid,
+                supportingText = {
+                    Text(stringResource(if (invalid) R.string.price_invalid else R.string.adjustment_field_hint))
+                },
+                // The decimal pad has no minus sign on many keyboards, and a discount is negative.
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.adjustment_by_percent), fontSize = 15.sp, color = Ink)
+                    Text(stringResource(R.string.adjustment_by_percent_hint), fontSize = 12.sp, color = Muted)
+                }
+                Switch(proportional, { proportional = it })
+            }
+            Button(
+                onClick = {
+                    val printed = if (total.isBlank()) null else parseMoney(total)
+                    val amount = if (adjustment.isBlank()) 0.0 else parseMoney(adjustment)
+                    if ((total.isNotBlank() && printed == null) || amount == null) {
+                        invalid = true
+                    } else {
+                        vm.setTotals(printed?.let(::toCents), Adjustment(toCents(amount), proportional))
+                        onClose()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape = RoundedCornerShape(12.dp),
+            ) { Text(stringResource(R.string.save), fontWeight = FontWeight.SemiBold) }
+        }
     }
 }
 

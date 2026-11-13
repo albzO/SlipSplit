@@ -414,4 +414,46 @@ class ReceiptParserTest {
         assertEquals(listOf(5.0, 6.0), receipt.items.map { it.price })
         assertEquals(11.0, receipt.total)
     }
+
+    private fun receiptOf(vararg rows: String) = parseReceipt(
+        rows.mapIndexed { index, text -> OcrLine(text, intArrayOf(0, index * 40, 400, index * 40 + 30)) },
+    )
+
+    @Test
+    fun takesAnItemDiscountOffThePriceAboveIt() {
+        val receipt = receiptOf("Milk 4.00", "Member price -1.00", "Bread 3.00", "Total 6.00")
+        assertEquals(listOf(3.0, 3.0), receipt.items.map { it.price })
+        assertEquals(null, receipt.discount)
+        assertEquals(Adjustment(), billAdjustment(receipt))
+    }
+
+    @Test
+    fun keepsPricesThatAreAlreadyDiscountedWhenOnlyTheyMatchTheTotal() {
+        val receipt = receiptOf("Milk 3.00", "Member price -1.00", "Bread 3.00", "Total 6.00")
+        assertEquals(listOf(3.0, 3.0), receipt.items.map { it.price })
+        assertEquals(Adjustment(), billAdjustment(receipt))
+    }
+
+    @Test
+    fun decidesTheItemDiscountsAfterDroppingAMisreadRow() {
+        // A dashed rule read as a priced row hides that the amounts are already discounted.
+        val receipt = receiptOf("SEI 1112", "Milk 3.00", "Member price -1.00", "Bread 3.00", "Total 6.00")
+        assertEquals(listOf(3.0, 3.0), receipt.items.map { it.price })
+        assertEquals(listOf(1112.0), receipt.dropped.map { it.price })
+    }
+
+    @Test
+    fun ignoresASavingsLineThatOnlySumsTheItemDiscounts() {
+        val receipt = receiptOf("Milk 3.00", "Promo -1.00", "Bread 3.00", "Promo -0.50", "Total 6.00", "Discount 1.50")
+        assertEquals(listOf(3.0, 3.0), receipt.items.map { it.price })
+        assertEquals(null, receipt.discount)
+        assertEquals(Adjustment(), billAdjustment(receipt))
+    }
+
+    @Test
+    fun marksAPrintedPercentageDiscount() {
+        val receipt = receiptOf("Milk 10.00", "Bread 10.00", "Discount 10% 2.00", "Total 18.00")
+        assertEquals(2.0, receipt.discount)
+        assertEquals(Adjustment(-200, proportional = true), billAdjustment(receipt))
+    }
 }

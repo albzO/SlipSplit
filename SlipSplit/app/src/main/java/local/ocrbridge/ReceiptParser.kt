@@ -54,6 +54,9 @@ class Receipt(
 
     /** Rows read as items that the printed total shows cannot be items. */
     var dropped: List<ReceiptItem> = emptyList()
+
+    /** A discount or charge row printed a percentage, so it is shared by each person's items. */
+    var percentage: Boolean = false
 }
 
 // JVM and Android disagree on \w, \b and \s; these spell out Python's Unicode behaviour.
@@ -102,6 +105,7 @@ private val NUMBER_TOKEN = Regex("^[*xX×@\$¥￥]?(?:$AMOUNT)$")
 private val CENTS = Regex("[.,][0-9]{1,2}$")
 private val PAID_AMOUNT = regex("(?:实[付收]|實[付收]|${START}paid$END)$S*[:：]?$S*[\$¥￥]?($AMOUNT)(?![0-9.,%])")
 private val SAVED_AMOUNT = regex("(?:优惠|優惠|折扣|${START}discount$END|${START}disc$END|${START}saved$END|${START}savings$END)$S*[:：]?$S*[\$¥￥]?($AMOUNT)(?![0-9.,%折])")
+private val PERCENT = Regex("[0-9]+(?:[.,][0-9]+)?$S*%")
 private val TRAILING_QTY = Regex("$S+[xX×*]$S*([0-9]{1,2})$S*$")
 private val DATE_OR_TIME = Regex("[0-9]{1,4}[-/.:][0-9]{1,2}[-/.:][0-9]{1,4}|[0-9]{1,2}:[0-9]{2}")
 private val QTY_IN_ROW = regex("(?:^|$S)(?:qty$S*)?([0-9]{1,2})$S*[xX×*@]")
@@ -688,7 +692,10 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
         val saved = SAVED_AMOUNT.find(row)
         if (paid != null || saved != null) {
             paid?.let { result.setOnce(Field.TOTAL, abs(toNumber(it.groupValues[1]) ?: 0.0)) }
-            saved?.let { result.setOnce(Field.DISCOUNT, abs(toNumber(it.groupValues[1]) ?: 0.0)) }
+            saved?.let {
+                result.setOnce(Field.DISCOUNT, abs(toNumber(it.groupValues[1]) ?: 0.0))
+                if (PERCENT.containsMatchIn(row)) result.percentage = true
+            }
             result.fieldLines.addAll(entry.cells)
             entries.add(null)
             continue
@@ -708,6 +715,9 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
         val field = classify(row)
         if (field != null) {
             entries.add(null)
+            if ((field == Field.DISCOUNT || field == Field.SERVICE) && PERCENT.containsMatchIn(row)) {
+                result.percentage = true
+            }
             if (amount == null) {
                 pendingField = field
             } else {
@@ -740,12 +750,12 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
             continue
         }
         if (amount < 0) {
-            // Right under an item it discounts that item; anywhere else it sums the discounts.
+            // Right under an item it discounts that item; anywhere else it discounts the bill.
             if (entries.lastOrNull() != null) {
-                result.discount = (result.discount ?: 0.0) + abs(amount)
                 entries.add(ItemRow(row, label, amount, entry.right, entry.left, entry.cells))
             } else {
                 result.setOnce(Field.DISCOUNT, abs(amount))
+                if (PERCENT.containsMatchIn(row)) result.percentage = true
                 result.fieldLines.addAll(entry.cells)
                 entries.add(null)
             }
@@ -755,9 +765,11 @@ fun parseReceipt(lines: List<OcrLine>): Receipt {
     }
     result.splitBlocks(entries)
     if (result.total == null) result.total = result.subtotal
-    applyItemDiscounts(result)
+    // A misread row such as a dashed rule can hide which way the discounts go until it is dropped.
+    val settled = applyItemDiscounts(result, settle = false)
     fixDigits(result)
     reconcile(result)
+    if (!settled) applyItemDiscounts(result, settle = true)
     readHeader(rows, result)
     return result
 }
@@ -801,25 +813,29 @@ fun sumMatches(receipt: Receipt): Boolean {
 }
 
 /**
- * Some printers take an item's discount off its amount, others print the full amount: when the
- * amounts already add up to the total they are net, when they miss it by the discounts they are not.
+ * A negative row under an item is that item's discount. Most printers print it under the full
+ * amount, so the item costs the amount less the discount; some print the amount already
+ * discounted and the negative row only as a note. The discounted amounts are taken unless the
+ * printed amounts alone add up to the total and the discounted ones do not. A printed discount
+ * equal to the item discounts only sums them, so it is not taken off the bill again. When
+ * neither adds up, nothing changes unless [settle], and the result is false.
  */
-private fun applyItemDiscounts(receipt: Receipt) {
-    if (receipt.items.none { it.discount > 0 }) return
-    val printed = receipt.discount
-    receipt.discount = null
-    if (totalsAgree(receipt, receipt.items.map { it.price }, ::close)) return
+private fun applyItemDiscounts(receipt: Receipt, settle: Boolean): Boolean {
+    val itemDiscounts = receipt.items.sumOf { it.discount }
+    if (itemDiscounts <= 0) return true
+    if (exact(receipt.discount, itemDiscounts)) receipt.discount = null
+    val printed = receipt.items.map { it.price }
     val net = receipt.items.map { it.price - it.discount }
-    if (totalsAgree(receipt, net, ::close)) {
-        receipt.items = receipt.items.map { item ->
-            item.copy(price = Math.round((item.price - item.discount) * 100) / 100.0).also {
-                it.lines = item.lines
-                it.discount = item.discount
-            }
-        }.toMutableList()
-        return
-    }
-    receipt.discount = printed
+    val netAgrees = totalsAgree(receipt, net, ::close)
+    if (!netAgrees && totalsAgree(receipt, printed, ::close)) return true
+    if (!netAgrees && !settle) return false
+    receipt.items = receipt.items.map { item ->
+        item.copy(price = Math.round((item.price - item.discount) * 100) / 100.0).also {
+            it.lines = item.lines
+            it.discount = item.discount
+        }
+    }.toMutableList()
+    return true
 }
 
 /** One digit of one item's price read as the recognizer's second choice; [cost] grows as it gets less likely. */

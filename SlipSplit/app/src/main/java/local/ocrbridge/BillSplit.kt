@@ -31,24 +31,54 @@ fun owners(item: BillItem, people: List<Int>): List<Int> {
 }
 
 /**
- * Whole-bill charges as a share of the items: the gap between the printed subtotal and total
- * when both were read, else the service charge less the discount.
+ * A whole-bill discount (negative) or charge in cents. A fixed amount is shared equally by the
+ * people who took something; a percentage one is shared by the value of what each person took.
  */
-fun billAdjustment(receipt: Receipt): Double {
-    val subtotal = receipt.subtotal
-    val total = receipt.total
-    if (subtotal != null && total != null && subtotal > 0) return (total - subtotal) / subtotal
+data class Adjustment(val cents: Long = 0, val proportional: Boolean = false)
+
+private fun near(a: Double, b: Double?) = b != null && kotlin.math.abs(a - b) <= 0.011
+
+/**
+ * The whole-bill amount the printed fields leave on top of the items. Item prices that already
+ * add up to the total leave nothing, whatever discount or subtotal is printed beside them. Tax
+ * added on top is a percentage, and so is any discount or charge printed with a percent sign.
+ */
+fun billAdjustment(receipt: Receipt): Adjustment {
     val items = receipt.items.sumOf { it.price }
-    if (items <= 0) return 0.0
-    return ((receipt.service ?: 0.0) - (receipt.discount ?: 0.0)) / items
+    val total = receipt.total
+    val subtotal = receipt.subtotal
+    val fees = (receipt.service ?: 0.0) - (receipt.discount ?: 0.0)
+    val tax = receipt.tax ?: 0.0
+    if (total == null) return Adjustment(toCents(fees), receipt.percentage)
+    if (near(items, total)) return Adjustment()
+    // A subtotal that matches the items is where the printed adjustment starts from.
+    val base = if (subtotal != null && near(items, subtotal)) subtotal else items
+    val taxOnTop = tax > 0 && !near(base + fees, total) && near(base + fees + tax, total)
+    val amount = if (base == subtotal || taxOnTop) total - base else fees
+    return Adjustment(toCents(amount), receipt.percentage || taxOnTop)
+}
+
+/** Splits [cents] by [weights], floor first, then one cent each to the largest remainders. */
+private fun shareOut(cents: Long, weights: List<Long>): List<Long> {
+    val sum = weights.sum()
+    if (sum == 0L) return weights.map { 0L }
+    val exact = weights.map { cents.toDouble() * it / sum }
+    val shares = exact.map { floor(it).toLong() }.toMutableList()
+    var left = cents - shares.sum()
+    for (index in exact.indices.sortedByDescending { exact[it] - floor(exact[it]) }) {
+        if (left <= 0) break
+        shares[index]++
+        left--
+    }
+    return shares
 }
 
 /**
- * Shares every item equally among its owners, the first picker taking any odd cent, then
- * scales each person by the same whole-bill [adjustment]. Leftover cents after scaling go to
- * the largest remainders, so the shares always add up to the bill's total.
+ * Shares every item equally among its owners, the first picker taking any odd cent, then adds
+ * the whole-bill [adjustment]: a fixed amount equally among the people who took something, a
+ * percentage by what each took. The shares always add up to the items plus the adjustment.
  */
-fun splitBill(items: List<BillItem>, people: List<Int>, adjustment: Double): BillSplit {
+fun splitBill(items: List<BillItem>, people: List<Int>, adjustment: Adjustment): BillSplit {
     require(people.isNotEmpty())
     val lines = people.associateWith { ArrayList<ShareLine>() }
     for (item in items) {
@@ -61,18 +91,14 @@ fun splitBill(items: List<BillItem>, people: List<Int>, adjustment: Double): Bil
     }
     val subtotals = people.map { person -> lines.getValue(person).sumOf { it.cents } }
     val itemsCents = subtotals.sum()
-    val totalCents = (itemsCents * (1 + adjustment)).roundToLong()
-    val exact = subtotals.map { it * (1 + adjustment) }
-    val totals = exact.map { floor(it).toLong() }.toMutableList()
-    var left = totalCents - totals.sum()
-    val byRemainder = exact.indices.sortedByDescending { exact[it] - floor(exact[it]) }
-    for (index in byRemainder) {
-        if (left <= 0) break
-        totals[index]++
-        left--
+    val weights = when {
+        adjustment.proportional && subtotals.all { it >= 0 } && itemsCents > 0 -> subtotals
+        subtotals.any { it != 0L } -> subtotals.map { if (it != 0L) 1L else 0L }
+        else -> people.map { 1L }
     }
+    val extras = shareOut(adjustment.cents, weights)
     val shares = people.mapIndexed { index, person ->
-        PersonShare(person, subtotals[index], totals[index], lines.getValue(person))
+        PersonShare(person, subtotals[index], subtotals[index] + extras[index], lines.getValue(person))
     }
-    return BillSplit(shares, itemsCents, totalCents)
+    return BillSplit(shares, itemsCents, itemsCents + adjustment.cents)
 }
