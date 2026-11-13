@@ -22,14 +22,14 @@ SlipSplit 是一款按人分账的安卓 App。拍一张小票，App 在手机�
 
 <table>
   <tr>
-    <td align="center" width="25%">📷<br><b>拍</b><br><sub>自动找四角，手握着也不跑偏</sub></td>
-    <td align="center" width="25%">🔍<br><b>读</b><br><sub>拉平、校平，在手机上识别</sub></td>
-    <td align="center" width="25%">👆<br><b>点</b><br><sub>点一下就记到谁名下</sub></td>
-    <td align="center" width="25%">💸<br><b>分</b><br><sub>精确到分，可复制文字或分享图片</sub></td>
+    <td align="center" width="25%"><b>拍</b><br><sub>自动找四角，手握着也不跑偏</sub></td>
+    <td align="center" width="25%"><b>读</b><br><sub>拉平、校平，在手机上识别</sub></td>
+    <td align="center" width="25%"><b>点</b><br><sub>点一下就记到谁名下</sub></td>
+    <td align="center" width="25%"><b>分</b><br><sub>精确到分，可复制文字或分享图片</sub></td>
   </tr>
 </table>
 
-## ✨ 功能
+## 功能
 
 - 拍照或从相册选图，自动找小票四角，可手动微调。手握着小票时框不会跑到手上，卷起的角也会框进来。
 - 识别前拉平纸张（UVDoc）并校平文字行。
@@ -43,14 +43,14 @@ SlipSplit 是一款按人分账的安卓 App。拍一张小票，App 在手机�
 - 分账历史：在首页上滑查看，点一条可以继续编辑，长按删除。保存第一条记录后，首页才会出现箭头和提示。
 - 中英文界面，默认跟随系统语言，也可以在设置里切换。
 
-## 📦 安装
+## 安装
 
 从 [Releases](https://github.com/albzO/SlipSplit/releases/latest) 下载 `SlipSplit-<版本>-arm64-v8a.apk`，在手机上打开安装。需要 Android 7.0 及以上，约 73MB；x86_64 版用于模拟器。
 
 > [!NOTE]
 > Release 包目前用调试密钥签名，安装时系统可能会提示风险。
 
-## 🛠️ 构建和运行
+## 构建和运行
 
 用 Android Studio 打开 `SlipSplit/`，点 Run。
 
@@ -63,7 +63,7 @@ cd SlipSplit
 
 Debug APK 按架构拆分，手机安装 `app-arm64-v8a-debug.apk`。
 
-## 🧰 技术栈
+## 技术栈
 
 | 层 | 选择 |
 | --- | --- |
@@ -76,7 +76,7 @@ Debug APK 按架构拆分，手机安装 `app-arm64-v8a-debug.apk`。
 
 <a id="how-it-works"></a>
 
-## 🧠 识别架构
+## 识别架构
 
 ```mermaid
 flowchart TD
@@ -111,7 +111,7 @@ flowchart TD
 
 </details>
 
-## 🧾 数据处理
+## 数据处理
 
 `ReceiptParser.kt` 把 OCR 行变成商品和合计。规则全部基于结构，不针对任何一张小票。
 
@@ -132,7 +132,7 @@ flowchart TD
 
 </details>
 
-### ➗ 分账计算
+### 分账计算
 
 `BillSplit.kt` 全部以分为单位计算：
 
@@ -142,7 +142,7 @@ flowchart TD
 - 整单调整默认是固定金额，由选了商品的人平摊；只有小票在折扣或附加费行印了百分比，或税额另加在外时，才按各人商品金额的比例分摊。总额、整单调整和按比例开关都可以手动修改。
 - 剩下的零头分给小数部分最大的人，所以各人金额加起来始终等于商品合计加整单调整。
 
-## 🗺️ 代码结构
+## 代码结构
 
 App 代码全部在 `SlipSplit/app/src/main/java/local/ocrbridge/`。
 
@@ -169,7 +169,7 @@ App 图标是 `res/drawable/ic_launcher_foreground.xml` 里的自适应图标：
 
 </details>
 
-## 🤖 模型
+## 模型
 
 模型放在 `SlipSplit/app/src/main/assets/`。App 加载的 ORT 格式文件已提交到 Git，克隆后可以直接构建；`.onnx` 源文件被 Git 忽略：
 
@@ -185,7 +185,7 @@ App 只加载 `.ort`，`.onnx` 是它们的转换来源，不会打进 APK。要
 
 停用的 DewarpNet 模型保存在 App 之外的 `models/dewarpnet/`。
 
-## 🧪 测试
+## 测试
 
 ```powershell
 cd SlipSplit
@@ -204,7 +204,7 @@ cd SlipSplit
 adb pull /sdcard/Android/data/local.ocrbridge/files/runs logs/phone-runs
 ```
 
-## 🔒 隐私和样本
+## 隐私和样本
 
 > [!TIP]
 > App 没有联网权限：除非你主动分享，小票上的内容不会离开手机。
@@ -213,10 +213,10 @@ adb pull /sdcard/Android/data/local.ocrbridge/files/runs logs/phone-runs
 - 分账历史（包括小票照片）存在 App 私有目录里，不会被导出。
 - `samples/` 含私人小票和 CC BY-NC 授权的样本，被 Git 忽略，不要随 App 分发；来源和授权见 `samples/sources.json`。
 
-## 📄 许可证
+## 许可证
 
 SlipSplit 以 [Apache License 2.0](LICENSE) 授权。第三方组件沿用各自的许可证：ONNX Runtime 为 MIT，U²-Netp 和 PP-OCR 为 Apache-2.0，UVDoc 以其项目的许可证为准。模型来源见各 assets 目录的 `README.txt`。
 
-## 🕰️ 历史
+## 历史
 
 桌面 Python 比较台和跑分表已移除，需要时可从提交 `442abde` 恢复。PP-OCR Small 在准确率和体积之间最均衡；Medium 准确率略高，但占用内存多得多，而且同样会读错印淡的数字，所以 App 已不再包含它，模型文件保存在 App 之外的 `models/ppocr-medium/`。ML Kit 的拉丁文识别器读不了中日韩小票。
