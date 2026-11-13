@@ -13,14 +13,23 @@
 
 <p align="center">
   <b>English</b> · <a href="README.zh.md">中文</a><br>
-  <a href="https://github.com/albzO/SlipSplit/releases/latest">Download APK</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="#recognition-architecture">How it works</a>
+  <a href="https://github.com/albzO/SlipSplit/releases/latest">Download APK</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="#how-it-works">How it works</a>
 </p>
 
 SlipSplit is an Android app that splits a shop or restaurant receipt between people. You take a photo, the app reads every item on the phone itself, and you tap items to assign them to each person. Nothing is uploaded: detection, flattening, text recognition and parsing all run offline.
 
 The first target is Australian receipts, including bilingual Chinese and English ones from Asian supermarkets.
 
-## Features
+<table>
+  <tr>
+    <td align="center" width="25%">📷<br><b>Snap</b><br><sub>Corners found for you, even with a hand on the paper</sub></td>
+    <td align="center" width="25%">🔍<br><b>Read</b><br><sub>Flattened, levelled and read on the phone</sub></td>
+    <td align="center" width="25%">👆<br><b>Tap</b><br><sub>Give each item to whoever had it</sub></td>
+    <td align="center" width="25%">💸<br><b>Split</b><br><sub>Exact to the cent, shared as text or an image</sub></td>
+  </tr>
+</table>
+
+## ✨ Features
 
 - Photo from the camera or gallery, with automatic corner detection and manual adjustment. The frame stays on the paper when a hand holds it, and covers curled corners.
 - Paper flattening (UVDoc) and row levelling before reading.
@@ -34,11 +43,14 @@ The first target is Australian receipts, including bilingual Chinese and English
 - History of finished splits: swipe up on the start screen to see them, tap one to edit it again, long-press to delete. The arrow and hint appear once there is a first split.
 - English and Chinese interface, following the system language unless set in Settings.
 
-## Install
+## 📦 Install
 
-Download `SlipSplit-<version>-arm64-v8a.apk` from [Releases](https://github.com/albzO/SlipSplit/releases/latest) and open it on the phone. It needs Android 7.0 or later and is about 73 MB; the x86_64 APK is for emulators. Release APKs are signed with a debug key for now, so Android may warn before installing.
+Download `SlipSplit-<version>-arm64-v8a.apk` from [Releases](https://github.com/albzO/SlipSplit/releases/latest) and open it on the phone. It needs Android 7.0 or later and is about 73 MB; the x86_64 APK is for emulators.
 
-## Build and run
+> [!NOTE]
+> Release APKs are signed with a debug key for now, so Android may warn before installing.
+
+## 🛠️ Build and run
 
 Open `SlipSplit/` in Android Studio and press Run.
 
@@ -51,7 +63,7 @@ cd SlipSplit
 
 Debug APKs are split by architecture; install `app-arm64-v8a-debug.apk` on a phone.
 
-## Technology
+## 🧰 Technology
 
 | Layer | Choice |
 | --- | --- |
@@ -62,7 +74,9 @@ Debug APKs are split by architecture; install `app-arm64-v8a-debug.apk` on a pho
 | Image processing | Android `Bitmap` and `Canvas`, plus small Kotlin geometry for the paper outline |
 | Models | U²-Netp (paper mask), UVDoc (flattening), PP-OCR detection and recognition in Tiny and Small sizes |
 
-## Recognition architecture
+<a id="how-it-works"></a>
+
+## 🧠 Recognition architecture
 
 ```mermaid
 flowchart TD
@@ -97,7 +111,7 @@ flowchart TD
 
 </details>
 
-## Data processing
+## 🧾 Data processing
 
 `ReceiptParser.kt` turns OCR lines into items and totals. The rules are structural and are never fitted to one receipt.
 
@@ -118,7 +132,7 @@ flowchart TD
 
 </details>
 
-### Splitting
+### ➗ Splitting
 
 `BillSplit.kt` works in cents:
 
@@ -128,7 +142,7 @@ flowchart TD
 - The adjustment is a fixed amount split evenly among the people who took something. It is shared by what each person took only when the receipt prints a percentage on a discount or charge row, or adds tax on top. The user can edit the total, the adjustment and the percentage switch.
 - Leftover cents go to the largest remainders, so the shares always add up to the items plus the adjustment.
 
-## Code map
+## 🗺️ Code map
 
 All app code is in `SlipSplit/app/src/main/java/local/ocrbridge/`.
 
@@ -155,7 +169,7 @@ The launcher icon is an adaptive icon in `res/drawable/ic_launcher_foreground.xm
 
 </details>
 
-## Models
+## 🤖 Models
 
 Models live in `SlipSplit/app/src/main/assets/`. The ORT-format files the app loads are in Git, so a fresh clone builds as is; the `.onnx` sources are ignored by Git:
 
@@ -166,11 +180,12 @@ Models live in `SlipSplit/app/src/main/assets/`. The ORT-format files the app lo
 
 The app loads only the `.ort` files; the `.onnx` files are their source and stay out of the APK. To replace a model, check the SHA256 listed in each folder's `README.txt` after downloading, then run `SlipSplit/ort/convert_models.ps1` to write the ORT-format copies the app loads; see `SlipSplit/ort/README.md`.
 
-The bundled ONNX Runtime is not complete: it has kernels only for the operators these models use. A model with a different structure may need operators it lacks and then fails to load until the runtime is rebuilt, which takes about an hour; swapping weights in the same structure does not.
+> [!WARNING]
+> The bundled ONNX Runtime is not complete: it has kernels only for the operators these models use. A model with a different structure may need operators it lacks and then fails to load until the runtime is rebuilt, which takes about an hour; swapping weights in the same structure does not.
 
 The retired DewarpNet model is kept outside the app in `models/dewarpnet/`.
 
-## Tests
+## 🧪 Tests
 
 ```powershell
 cd SlipSplit
@@ -189,16 +204,19 @@ Records are only kept while *Keep recognition records* is on in Settings; it is 
 adb pull /sdcard/Android/data/local.ocrbridge/files/runs logs/phone-runs
 ```
 
-## Privacy and samples
+## 🔒 Privacy and samples
+
+> [!TIP]
+> The app has no network permission: nothing on the receipt ever leaves the phone unless you share it.
 
 - Recognition and parsing run on the phone, and the app has no network permission. Recognition records are off by default; when turned on they stay on the phone and leave it only through the export in Settings.
 - Split history, including the receipt photo, stays in the app's private storage and is never exported.
 - `samples/` holds private receipts and CC BY-NC samples. It is ignored by Git and must not ship with the app; sources and licences are in `samples/sources.json`.
 
-## License
+## 📄 License
 
 SlipSplit is licensed under the [Apache License 2.0](LICENSE). Third-party parts keep their own licences: ONNX Runtime is MIT, U²-Netp and PP-OCR are Apache-2.0, and UVDoc follows its project's licence. Model sources are listed in each assets folder's `README.txt`.
 
-## History
+## 🕰️ History
 
 The desktop Python bench and its score sheets were removed; restore them from commit `442abde` if needed. PP-OCR Small gave the best balance of accuracy and size. Medium was slightly more accurate but used much more memory and still misread faded digits, so the app dropped it; its files are kept outside the app in `models/ppocr-medium/`. ML Kit's Latin recognizer cannot read CJK receipts.
