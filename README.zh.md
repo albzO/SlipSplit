@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.svg" width="128" height="128" alt="SlipSplit icon"></p>
+
 <h1 align="center">SlipSplit</h1>
 
 <p align="center"><b>拍一张小票，点一下谁买了什么，精确到分地分账：安卓上完全离线。</b></p>

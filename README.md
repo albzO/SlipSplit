@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.svg" width="128" height="128" alt="SlipSplit icon"></p>
+
 <h1 align="center">SlipSplit</h1>
 
 <p align="center"><b>Snap a receipt, tap who had what, split it to the cent: fully offline on Android.</b></p>
