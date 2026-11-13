@@ -5,12 +5,12 @@
 <p align="center"><b>Snap a receipt, tap who had what, split it to the cent: fully offline on Android.</b></p>
 
 <p align="center">
-  <a href="https://github.com/albzO/SlipSplit/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/albzO/SlipSplit?color=2f81f7"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/albzO/SlipSplit?color=orange"></a>
-  <img alt="Android 7.0+" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white">
-  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white">
-  <img alt="ONNX Runtime" src="https://img.shields.io/badge/ONNX%20Runtime-on--device-005CED?logo=onnx&logoColor=white">
-  <img alt="Offline" src="https://img.shields.io/badge/100%25%20offline-success">
+  <a href="https://github.com/albzO/SlipSplit/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/albzO/SlipSplit?color=2f81f7&style=flat-square"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/albzO/SlipSplit?color=orange&style=flat-square"></a>
+  <img alt="Android 7.0+" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white&style=flat-square">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white&style=flat-square">
+  <img alt="ONNX Runtime" src="https://img.shields.io/badge/ONNX%20Runtime-on--device-005CED?logo=onnx&logoColor=white&style=flat-square">
+  <img alt="Offline" src="https://img.shields.io/badge/100%25%20offline-success?style=flat-square">
 </p>
 
 <p align="center">
