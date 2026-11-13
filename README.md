@@ -5,6 +5,7 @@
 <p align="center"><b>Snap a receipt, tap who had what, split it to the cent: fully offline on Android.</b></p>
 
 <p align="center">
+  <a href="https://github.com/albzO/SlipSplit/releases/latest"><img alt="Download APK" src="https://img.shields.io/badge/Download-APK-E07A2E?logo=android&logoColor=white&style=flat-square"></a>
   <a href="https://github.com/albzO/SlipSplit/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/albzO/SlipSplit?color=2f81f7&style=flat-square"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/albzO/SlipSplit?color=orange&style=flat-square"></a>
   <img alt="Android 7.0+" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white&style=flat-square">
@@ -15,7 +16,7 @@
 
 <p align="center">
   <b>English</b> · <a href="README.zh.md">中文</a><br>
-  <a href="https://github.com/albzO/SlipSplit/releases/latest">Download APK</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="#how-it-works">How it works</a>
+  <a href="CHANGELOG.md">Changelog</a> · <a href="#how-it-works">How it works</a>
 </p>
 
 SlipSplit is an Android app that splits a shop or restaurant receipt between people. You take a photo, the app reads every item on the phone itself, and you tap items to assign them to each person. Nothing is uploaded: detection, flattening, text recognition and parsing all run offline.

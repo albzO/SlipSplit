@@ -5,6 +5,7 @@
 <p align="center"><b>拍一张小票，点一下谁买了什么，精确到分地分账：安卓上完全离线。</b></p>
 
 <p align="center">
+  <a href="https://github.com/albzO/SlipSplit/releases/latest"><img alt="下载 APK" src="https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-APK-E07A2E?logo=android&logoColor=white&style=flat-square"></a>
   <a href="https://github.com/albzO/SlipSplit/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/albzO/SlipSplit?color=2f81f7&style=flat-square"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/albzO/SlipSplit?color=orange&style=flat-square"></a>
   <img alt="Android 7.0+" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white&style=flat-square">
@@ -15,7 +16,7 @@
 
 <p align="center">
   <a href="README.md">English</a> · <b>中文</b><br>
-  <a href="https://github.com/albzO/SlipSplit/releases/latest">下载 APK</a> · <a href="CHANGELOG.zh.md">更新日志</a> · <a href="#how-it-works">工作原理</a>
+  <a href="CHANGELOG.zh.md">更新日志</a> · <a href="#how-it-works">工作原理</a>
 </p>
 
 SlipSplit 是一款按人分账的安卓 App。拍一张小票，App 在手机上读出每一项商品，你点一下就把商品记到某个人名下。照片不上传：找边、拉平、文字识别和解析全部离线完成。
